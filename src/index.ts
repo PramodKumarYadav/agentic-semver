@@ -2,6 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import semver from 'semver';
 import type Anthropic from '@anthropic-ai/sdk';
+import { detectVersionFile, readVersionFromFile, writeVersionToFile, VERSION_FILE_CANDIDATES } from './version-files.js';
+import { writeChangelogEntry, upsertChangelogEntry } from './changelog.js';
+
+// Re-export so consumers only need to import from this one entry point.
+export { detectVersionFile, readVersionFromFile, writeVersionToFile, VERSION_FILE_CANDIDATES };
+export { upsertChangelogEntry };
 
 const SUPPORTED_BUMPS = new Set<string>(['patch', 'minor', 'major']);
 const MAX_PATCH_CHARACTERS = 4000;
@@ -174,161 +180,10 @@ export async function analyzePullRequest(params: AnalyzePullRequestParams): Prom
   return parseAnalysisResponse(extractTextContent(message.content as ContentBlock[]));
 }
 
-function readJsonFile(filePath: string): Record<string, unknown> {
-  return JSON.parse(fs.readFileSync(filePath, 'utf8')) as Record<string, unknown>;
-}
-
-function writeJsonFile(filePath: string, value: unknown): void {
-  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
-}
-
-export function readVersionFromFile(filePath: string): string {
-  const content = fs.readFileSync(filePath, 'utf8');
-  const basename = path.basename(filePath);
-
-  if (basename === 'package.json') {
-    const pkg = JSON.parse(content) as { version?: string };
-    if (!pkg.version) throw new Error(`No "version" field in ${filePath}`);
-    return pkg.version;
-  }
-
-  if (basename === 'pyproject.toml') {
-    // Scope the search to [project] or [tool.poetry] sections only.
-    const match = /^\[(project|tool\.poetry)\][^\[]*?^\s*version\s*=\s*["']([^"']+)["']/m.exec(content);
-    if (!match) throw new Error(`No version field found in ${filePath}`);
-    return match[2];
-  }
-
-  if (basename === 'pom.xml') {
-    // Strip <parent>...</parent> first to avoid picking up the parent version.
-    const withoutParent = content.replace(/<parent>[\s\S]*?<\/parent>/i, '');
-    const match = /<version>\s*([^<]+?)\s*<\/version>/.exec(withoutParent);
-    if (!match) throw new Error(`No <version> tag found in ${filePath}`);
-    return match[1];
-  }
-
-  if (basename === 'gradle.properties') {
-    const match = /^\s*version\s*=\s*(.+)/m.exec(content);
-    if (!match) throw new Error(`No version= line found in ${filePath}`);
-    return match[1].trim();
-  }
-
-  throw new Error(
-    `Unsupported version file: ${basename}. ` +
-      `Supported files: package.json, pyproject.toml, pom.xml, gradle.properties.`
-  );
-}
-
-const VERSION_FILE_CANDIDATES = ['package.json', 'pyproject.toml', 'pom.xml', 'gradle.properties'];
-
-export function detectVersionFile(workdir: string = process.cwd()): string {
-  for (const candidate of VERSION_FILE_CANDIDATES) {
-    const full = path.join(workdir, candidate);
-    if (fs.existsSync(full)) return full;
-  }
-  throw new Error(
-    `Could not auto-detect a version file. ` +
-      `Checked: ${VERSION_FILE_CANDIDATES.join(', ')}. ` +
-      `Set the "version-file" input explicitly.`
-  );
-}
-
-export function writeVersionToFile(filePath: string, version: string): void {
-  const content = fs.readFileSync(filePath, 'utf8');
-  const basename = path.basename(filePath);
-
-  if (basename === 'package.json') {
-    const pkg = readJsonFile(filePath);
-    pkg.version = version;
-    writeJsonFile(filePath, pkg);
-    return;
-  }
-
-  if (basename === 'pyproject.toml') {
-    // Replace the version line inside [project] or [tool.poetry] only.
-    const updated = content.replace(
-      /(^\[(project|tool\.poetry)\][^\[]*?^\s*version\s*=\s*)["'][^"']+["']/ms,
-      (_, prefix) => `${prefix}"${version}"`
-    );
-    if (updated === content) throw new Error(`Could not update version in ${filePath}`);
-    fs.writeFileSync(filePath, updated);
-    return;
-  }
-
-  if (basename === 'pom.xml') {
-    // Replace the project <version> tag, skipping any <parent> block.
-    const withoutParent = content.replace(/(<parent>[\s\S]*?<\/parent>)/i, (match) => match.replace(/</g, '\x00'));
-    const updated = withoutParent.replace(/<version>[^<]+<\/version>/, `<version>${version}<\/version>`);
-    if (updated === withoutParent) throw new Error(`Could not update <version> in ${filePath}`);
-    fs.writeFileSync(filePath, updated.replace(/\x00/g, '<'));
-    return;
-  }
-
-  if (basename === 'gradle.properties') {
-    const updated = content.replace(/^(\s*version\s*=\s*).+/m, `$1${version}`);
-    if (updated === content) throw new Error(`Could not update version in ${filePath}`);
-    fs.writeFileSync(filePath, updated);
-    return;
-  }
-
-  throw new Error(
-    `Unsupported version file: ${basename}. ` +
-      `Supported files: package.json, pyproject.toml, pom.xml, gradle.properties.`
-  );
-}
-
 function calculateNextVersion(currentVersion: string, bump: string): string {
   const nextVersion = semver.inc(currentVersion, bump as semver.ReleaseType);
-
-  if (!nextVersion) {
-    throw new Error(`Unable to calculate a ${bump} version from ${currentVersion}.`);
-  }
-
+  if (!nextVersion) throw new Error(`Unable to calculate a ${bump} version from ${currentVersion}.`);
   return nextVersion;
-}
-
-function formatDate(date = new Date()): string {
-  return date.toISOString().slice(0, 10);
-}
-
-interface CreateChangelogEntryParams {
-  version: string;
-  summary: string;
-  changelog: string[];
-  date?: string;
-}
-
-function createChangelogEntry({ version, summary, changelog, date = formatDate() }: CreateChangelogEntryParams): string {
-  return [
-    `## ${version} - ${date}`,
-    '',
-    `- Summary: ${summary}`,
-    ...changelog.map((item) => `- ${item}`),
-    ''
-  ].join('\n');
-}
-
-export function upsertChangelogEntry(existingContent: string, entry: string, version: string): string {
-  const heading = `## ${version} - `;
-  const normalizedEntry = entry.trimEnd();
-
-  if (!existingContent.trim()) {
-    return `# Changelog\n\n${normalizedEntry}\n`;
-  }
-
-  const header = existingContent.startsWith('# Changelog') ? '# Changelog\n\n' : '';
-  const body = existingContent.startsWith('# Changelog')
-    ? existingContent.replace(/^# Changelog\n\n?/, '')
-    : existingContent;
-
-  if (body.includes(heading)) {
-    const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const sectionPattern = new RegExp(`${escapedHeading}[\\s\\S]*?(?=\\n## |$)`);
-    const updatedBody = body.replace(sectionPattern, normalizedEntry);
-    return `${header}${updatedBody.trimEnd()}\n`;
-  }
-
-  return `${header}${normalizedEntry}\n\n${body.trimStart()}`;
 }
 
 export interface ApplyVersionRecommendationParams {
@@ -344,40 +199,33 @@ export function applyVersionRecommendation({
   changelogPath,
   baseVersion,
   recommendation,
-  date = formatDate()
+  date
 }: ApplyVersionRecommendationParams): ApplyVersionResult {
   const nextVersion = calculateNextVersion(baseVersion, recommendation.bump);
 
   writeVersionToFile(versionFilePath, nextVersion);
 
-  // For Node.js projects keep package-lock.json in sync.
+  // Keep package-lock.json in sync for Node.js projects.
   if (path.basename(versionFilePath) === 'package.json') {
     const lockPath = path.join(path.dirname(versionFilePath), 'package-lock.json');
     if (fs.existsSync(lockPath)) {
-      const lock = readJsonFile(lockPath) as {
+      const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8')) as {
         version: string;
         packages?: Record<string, { version: string }>;
       };
       lock.version = nextVersion;
-      if (lock.packages?.['']) {
-        lock.packages[''].version = nextVersion;
-      }
-      writeJsonFile(lockPath, lock);
+      if (lock.packages?.['']) lock.packages[''].version = nextVersion;
+      fs.writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
     }
   }
 
-  const existingChangelog = fs.existsSync(changelogPath)
-    ? fs.readFileSync(changelogPath, 'utf8')
-    : '';
-
-  const changelogEntry = createChangelogEntry({
-    version: nextVersion,
-    summary: recommendation.summary,
-    changelog: recommendation.changelog,
+  const changelogEntry = writeChangelogEntry(
+    changelogPath,
+    nextVersion,
+    recommendation.summary,
+    recommendation.changelog,
     date
-  });
-
-  fs.writeFileSync(changelogPath, upsertChangelogEntry(existingChangelog, changelogEntry, nextVersion));
+  );
 
   return { currentVersion: baseVersion, nextVersion, changelogEntry };
 }

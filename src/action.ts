@@ -8,13 +8,12 @@ import Anthropic from '@anthropic-ai/sdk';
 import {
   analyzePullRequest,
   applyVersionRecommendation,
-  detectVersionFile,
-  readVersionFromFile,
   resolveRepositoryFile,
   type AnalysisRecommendation,
   type ApplyVersionResult,
   type ChangedFile
 } from './index.js';
+import { detectVersionFile, readVersionFromFile } from './version-files.js';
 
 interface LoadBaseVersionParams {
   owner: string;

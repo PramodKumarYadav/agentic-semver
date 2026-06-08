@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as core from '@actions/core';
 import * as github from '@actions/github';
-import { detectVersionFile, readVersionFromFile } from './index.js';
+import { detectVersionFile, readVersionFromFile } from './version-files.js';
 
 // Re-export so tests and external consumers can import from either module.
 export { detectVersionFile, readVersionFromFile };
