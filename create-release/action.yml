@@ -1,0 +1,46 @@
+name: Agentic SemVer Release
+description: >
+  Create a GitHub Release automatically from your version file and CHANGELOG.md.
+  Supports Node.js (package.json), Python (pyproject.toml), and Java (pom.xml / gradle.properties).
+  Idempotent — skips gracefully when the release already exists.
+
+inputs:
+  github-token:
+    description: >
+      GitHub token with contents:write permission to create releases and tags.
+      Use secrets.GITHUB_TOKEN for the default repository token.
+    required: true
+  changelog-path:
+    description: Path to the CHANGELOG.md file used to extract release notes.
+    required: false
+    default: CHANGELOG.md
+  version-file:
+    description: >
+      Path to the version file. Auto-detected when not specified.
+      Supported files: package.json, pyproject.toml, pom.xml, gradle.properties.
+    required: false
+    default: ""
+  tag-prefix:
+    description: Prefix applied to the version number to form the git tag (e.g. "v" produces "v1.2.3").
+    required: false
+    default: v
+  draft:
+    description: Create the release as a draft (not publicly visible until published).
+    required: false
+    default: "false"
+  prerelease:
+    description: Mark the release as a pre-release.
+    required: false
+    default: "false"
+
+outputs:
+  version:
+    description: The version read from the version file (e.g. "1.2.3").
+  tag:
+    description: The full tag name created or found (e.g. "v1.2.3").
+  released:
+    description: Whether a new release was created ("true") or already existed ("false").
+
+runs:
+  using: node20
+  main: ../dist/release.js
