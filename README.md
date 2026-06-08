@@ -11,6 +11,8 @@
 - Upserts a new entry in `CHANGELOG.md`
 - Optionally commits the generated version files back to the pull request branch
 
+See [COMPARISON.md](./COMPARISON.md) for a detailed comparison with `semantic-release`, `release-please`, and `changesets`.
+
 ## Repository workflows
 
 ### End-to-end release workflow
@@ -106,6 +108,49 @@ jobs:
 | `commit-changes` | `true` | Commit `package.json` and `CHANGELOG.md` back to the PR branch |
 | `comment-summary` | `false` | Post a PR comment with the bump recommendation and changelog entry |
 | `apply-label` | `true` | Apply a `major`, `minor`, or `patch` label to the pull request |
+
+## Action outputs
+
+| Output | Description |
+| --- | --- |
+| `skipped` | `'true'` if the action skipped processing (draft PR, wrong base branch, no relevant files) |
+| `bump` | Recommended bump type: `patch`, `minor`, or `major` |
+| `current-version` | Version found on the base branch |
+| `next-version` | Version written to `package.json` |
+| `summary` | Claude's one-line summary of the pull request changes |
+| `changelog-entry` | Full markdown changelog entry generated for the release |
+
+## Using with other languages
+
+The AI diff analysis works on **any language** — Claude can classify Python, Go, Rust, Java, or any other code change equally well. Only the automatic version file write is Node.js-specific (`package.json`).
+
+For other ecosystems, set `commit-changes: false` and use the action outputs to update your own version file:
+
+```yaml
+- uses: PramodKumarYadav/agentic-semver@main
+  id: semver
+  with:
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+    commit-changes: false  # don't touch package.json
+
+# Example: update pyproject.toml for a Python project
+- if: steps.semver.outputs.skipped == 'false'
+  run: |
+    pip install tomli-w
+    python - <<'EOF'
+    import tomllib, tomli_w, pathlib
+    p = pathlib.Path('pyproject.toml')
+    data = tomllib.loads(p.read_text())
+    data['project']['version'] = '${{ steps.semver.outputs.next-version }}'
+    p.write_bytes(tomli_w.dumps(data))
+    EOF
+    git add pyproject.toml
+    git commit -m "chore: bump version to ${{ steps.semver.outputs.next-version }}"
+    git push
+```
+
+The `bump`, `next-version`, `summary`, and `changelog-entry` outputs are always available for you to wire into any toolchain.
 
 ## Library usage
 
