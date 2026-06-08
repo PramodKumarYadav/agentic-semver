@@ -81,14 +81,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: npm
-
-      - run: npm ci
-
-      - uses: ./
+      - uses: PramodKumarYadav/agentic-semver@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -127,7 +120,7 @@ The AI diff analysis works on **any language** — Claude can classify Python, G
 For other ecosystems, set `commit-changes: false` and use the action outputs to update your own version file:
 
 ```yaml
-- uses: PramodKumarYadav/agentic-semver@main
+- uses: PramodKumarYadav/agentic-semver@v1
   id: semver
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -148,6 +141,7 @@ For other ecosystems, set `commit-changes: false` and use the action outputs to 
     git add pyproject.toml
     git commit -m "chore: bump version to ${{ steps.semver.outputs.next-version }}"
     git push
+
 ```
 
 The `bump`, `next-version`, `summary`, and `changelog-entry` outputs are always available for you to wire into any toolchain.
@@ -177,12 +171,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: PramodKumarYadav/agentic-semver/release@main
+      - uses: PramodKumarYadav/agentic-semver/release@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           # version-file: pyproject.toml   # optional — auto-detected by default
           # changelog-path: CHANGELOG.md   # optional — default: CHANGELOG.md
           # tag-prefix: v                  # optional — default: v
+
 ```
 
 ### Release action inputs

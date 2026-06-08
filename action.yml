@@ -1,5 +1,8 @@
 name: Agentic SemVer
 description: Use Claude to recommend semantic version bumps and maintain CHANGELOG.md for pull requests into main.
+branding:
+  icon: tag
+  color: purple
 inputs:
   github-token:
     description: GitHub token used to read pull request metadata and push generated version changes.
