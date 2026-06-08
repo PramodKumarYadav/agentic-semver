@@ -1,34 +1,58 @@
-const { execFileSync } = require('node:child_process');
-const fs = require('node:fs');
-const path = require('node:path');
-const core = require('@actions/core');
-const github = require('@actions/github');
-const Anthropic = require('@anthropic-ai/sdk');
-const {
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import * as core from '@actions/core';
+import * as github from '@actions/github';
+import Anthropic from '@anthropic-ai/sdk';
+import {
   analyzePullRequest,
   applyVersionRecommendation,
   readPackageVersion,
-  resolveRepositoryFile
-} = require('./index');
+  resolveRepositoryFile,
+  type AnalysisRecommendation,
+  type ApplyVersionResult,
+  type ChangedFile
+} from './index';
 
-async function loadBaseVersion(octokit, { owner, repo, baseRef, packageJsonPath, fallbackVersion }) {
+interface LoadBaseVersionParams {
+  owner: string;
+  repo: string;
+  baseRef: string;
+  packageJsonPath: string;
+  fallbackVersion: string;
+}
+
+interface OctokitLike {
+  rest: {
+    repos: {
+      getContent: (params: {
+        owner: string;
+        repo: string;
+        path: string;
+        ref: string;
+      }) => Promise<{ data: unknown }>;
+    };
+  };
+}
+
+export async function loadBaseVersion(
+  octokit: OctokitLike,
+  { owner, repo, baseRef, packageJsonPath, fallbackVersion }: LoadBaseVersionParams
+): Promise<string> {
   try {
-    const response = await octokit.rest.repos.getContent({
-      owner,
-      repo,
-      path: packageJsonPath,
-      ref: baseRef
-    });
+    const response = await octokit.rest.repos.getContent({ owner, repo, path: packageJsonPath, ref: baseRef });
+    const data = response.data as Record<string, unknown>;
 
-    if (!('content' in response.data)) {
+    if (!('content' in data)) {
       return fallbackVersion;
     }
 
-    const decoded = Buffer.from(response.data.content, 'base64').toString('utf8');
-    const parsed = JSON.parse(decoded);
-    return parsed.version || fallbackVersion;
+    const decoded = Buffer.from(data.content as string, 'base64').toString('utf8');
+    const parsed = JSON.parse(decoded) as { version?: string };
+    return parsed.version ?? fallbackVersion;
   } catch (error) {
-    if (error.status === 404) {
+    const err = error as { status?: number; message?: string };
+    if (err.status === 404) {
       core.info(`No ${packageJsonPath} found on ${baseRef}; using the workspace version as the baseline.`);
       return fallbackVersion;
     }
@@ -37,12 +61,12 @@ async function loadBaseVersion(octokit, { owner, repo, baseRef, packageJsonPath,
   }
 }
 
-function filterRelevantFiles(files, ignoredPaths) {
+export function filterRelevantFiles(files: ChangedFile[], ignoredPaths: string[]): ChangedFile[] {
   const ignored = new Set(ignoredPaths.map((filePath) => filePath.replace(/^\.\//, '')));
   return files.filter((file) => !ignored.has(file.filename));
 }
 
-function hasStagedChanges(files) {
+function hasStagedChanges(files: string[]): boolean {
   const changedFiles = execFileSync('git', ['diff', '--cached', '--name-only'], { encoding: 'utf8' }).trim();
   if (!changedFiles) {
     return false;
@@ -52,7 +76,19 @@ function hasStagedChanges(files) {
   return files.some((file) => staged.has(file.replace(/^\.\//, '')));
 }
 
-function commitAndPushChanges({ pullRequest, packageJsonPath, changelogPath, nextVersion }) {
+interface CommitAndPushParams {
+  pullRequest: { head: { ref: string } };
+  packageJsonPath: string;
+  changelogPath: string;
+  nextVersion: string;
+}
+
+export function commitAndPushChanges({
+  pullRequest,
+  packageJsonPath,
+  changelogPath,
+  nextVersion
+}: CommitAndPushParams): boolean {
   execFileSync('git', ['config', 'user.name', 'github-actions[bot]']);
   execFileSync('git', ['config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com']);
   execFileSync('git', ['checkout', '-B', pullRequest.head.ref]);
@@ -74,7 +110,26 @@ function commitAndPushChanges({ pullRequest, packageJsonPath, changelogPath, nex
   return true;
 }
 
-async function postSummaryComment(octokit, { owner, repo, issueNumber, result, recommendation }) {
+interface PostSummaryCommentParams {
+  owner: string;
+  repo: string;
+  issueNumber: number;
+  result: ApplyVersionResult;
+  recommendation: AnalysisRecommendation;
+}
+
+interface OctokitWithIssues extends OctokitLike {
+  rest: OctokitLike['rest'] & {
+    issues: {
+      createComment: (params: { owner: string; repo: string; issue_number: number; body: string }) => Promise<void>;
+    };
+  };
+}
+
+export async function postSummaryComment(
+  octokit: OctokitWithIssues,
+  { owner, repo, issueNumber, result, recommendation }: PostSummaryCommentParams
+): Promise<void> {
   const body = [
     '## Agentic semver update',
     '',
@@ -85,15 +140,10 @@ async function postSummaryComment(octokit, { owner, repo, issueNumber, result, r
     result.changelogEntry.trim()
   ].join('\n');
 
-  await octokit.rest.issues.createComment({
-    owner,
-    repo,
-    issue_number: issueNumber,
-    body
-  });
+  await octokit.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body });
 }
 
-async function run() {
+export async function run(): Promise<void> {
   try {
     const githubToken = core.getInput('github-token', { required: true });
     const anthropicApiKey = core.getInput('anthropic-api-key', { required: true });
@@ -111,7 +161,7 @@ async function run() {
     }
 
     if (pullRequest.base.ref !== targetBaseBranch) {
-      core.info(`Skipping analysis because the pull request targets ${pullRequest.base.ref}, not ${targetBaseBranch}.`);
+      core.info(`Skipping analysis because the pull request targets ${String(pullRequest.base.ref)}, not ${targetBaseBranch}.`);
       core.setOutput('skipped', 'true');
       return;
     }
@@ -122,7 +172,7 @@ async function run() {
     const baseVersion = await loadBaseVersion(octokit, {
       owner,
       repo,
-      baseRef: pullRequest.base.ref,
+      baseRef: String(pullRequest.base.ref),
       packageJsonPath,
       fallbackVersion: workspaceVersion
     });
@@ -130,7 +180,7 @@ async function run() {
     const allFiles = await octokit.paginate(octokit.rest.pulls.listFiles, {
       owner,
       repo,
-      pull_number: pullRequest.number,
+      pull_number: pullRequest.number as number,
       per_page: 100
     });
     const relevantFiles = filterRelevantFiles(allFiles, [packageJsonPath, changelogPath]);
@@ -146,10 +196,14 @@ async function run() {
       anthropic,
       model,
       repositoryFullName: `${owner}/${repo}`,
-      baseRef: pullRequest.base.ref,
-      headRef: pullRequest.head.ref,
+      baseRef: String(pullRequest.base.ref),
+      headRef: String(pullRequest.head.ref),
       currentVersion: baseVersion,
-      pullRequest,
+      pullRequest: {
+        number: pullRequest.number as number,
+        title: String(pullRequest.title),
+        body: pullRequest.body as string | null | undefined
+      },
       files: relevantFiles,
       maxFiles
     });
@@ -179,10 +233,10 @@ async function run() {
       .addCodeBlock(result.changelogEntry.trim(), 'markdown')
       .write();
 
-    const isFork = pullRequest.head.repo.full_name !== `${owner}/${repo}`;
+    const isFork = (pullRequest.head.repo as { full_name: string }).full_name !== `${owner}/${repo}`;
     if (commitChanges && !isFork) {
       commitAndPushChanges({
-        pullRequest,
+        pullRequest: { head: { ref: String(pullRequest.head.ref) } },
         packageJsonPath,
         changelogPath,
         nextVersion: result.nextVersion
@@ -192,10 +246,10 @@ async function run() {
     }
 
     if (commentSummary) {
-      await postSummaryComment(octokit, {
+      await postSummaryComment(octokit as unknown as OctokitWithIssues, {
         owner,
         repo,
-        issueNumber: pullRequest.number,
+        issueNumber: pullRequest.number as number,
         result,
         recommendation
       });
@@ -210,13 +264,5 @@ async function run() {
 }
 
 if (require.main === module) {
-  run();
+  void run();
 }
-
-module.exports = {
-  commitAndPushChanges,
-  filterRelevantFiles,
-  loadBaseVersion,
-  postSummaryComment,
-  run
-};

@@ -50,4 +50,4 @@ outputs:
     description: Markdown changelog entry generated for the release.
 runs:
   using: node20
-  main: src/action.js
+  main: dist/action.js

@@ -1,17 +1,19 @@
 {
-  "name": "@pramodkumaryadav/agentic-semver",
+  "name": "@pramodyadav027/agentic-semver",
   "version": "0.1.0",
   "description": "A library and GitHub Action for AI-driven semantic versioning and changelog generation.",
-  "main": "src/index.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "type": "commonjs",
   "files": [
-    "src",
+    "dist",
     "action.yml",
     "README.md",
     "CHANGELOG.md"
   ],
   "scripts": {
-    "test": "node --test"
+    "build": "tsc",
+    "test": "node --require tsx/cjs --test test/*.test.ts"
   },
   "keywords": [
     "semantic-versioning",
@@ -36,9 +38,15 @@
   },
   "homepage": "https://github.com/PramodKumarYadav/agentic-semver#readme",
   "dependencies": {
-    "@actions/core": "^3.0.1",
+    "@actions/core": "^2.0.3",
     "@actions/github": "^9.1.1",
     "@anthropic-ai/sdk": "^0.102.0",
     "semver": "^7.8.2"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.2",
+    "@types/semver": "^7.7.1",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
   }
 }
