@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   version:
-    if: ${{ !github.event.pull_request.draft && secrets.ANTHROPIC_API_KEY != '' }}
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
 
     steps:
