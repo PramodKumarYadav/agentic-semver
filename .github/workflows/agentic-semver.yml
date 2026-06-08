@@ -1,0 +1,44 @@
+name: Agentic SemVer
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+    paths-ignore:
+      - package.json
+      - CHANGELOG.md
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  version:
+    if: ${{ !github.event.pull_request.draft && secrets.ANTHROPIC_API_KEY != '' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Recommend and apply semantic version
+        uses: ./
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}

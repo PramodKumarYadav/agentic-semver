@@ -1,0 +1,53 @@
+name: Agentic SemVer
+description: Use Claude to recommend semantic version bumps and maintain CHANGELOG.md for pull requests into main.
+inputs:
+  github-token:
+    description: GitHub token used to read pull request metadata and push generated version changes.
+    required: true
+  anthropic-api-key:
+    description: Anthropic API key used to call Claude.
+    required: true
+  model:
+    description: Claude model used for the analysis request.
+    required: false
+    default: claude-3-5-sonnet-latest
+  package-json-path:
+    description: Path to the package.json file that should be versioned.
+    required: false
+    default: package.json
+  changelog-path:
+    description: Path to the changelog file that should be updated.
+    required: false
+    default: CHANGELOG.md
+  target-base-branch:
+    description: Only process pull requests that target this base branch.
+    required: false
+    default: main
+  max-files:
+    description: Maximum number of changed files to include in the Claude prompt.
+    required: false
+    default: '40'
+  commit-changes:
+    description: Commit and push package.json and changelog updates back to the pull request branch.
+    required: false
+    default: 'true'
+  comment-summary:
+    description: Post a pull request comment summarizing the recommended bump and changelog entry.
+    required: false
+    default: 'false'
+outputs:
+  skipped:
+    description: Whether the action skipped processing.
+  bump:
+    description: Recommended semantic version bump.
+  current-version:
+    description: Version found on the base branch.
+  next-version:
+    description: Version written to package.json.
+  summary:
+    description: Claude summary of the pull request changes.
+  changelog-entry:
+    description: Markdown changelog entry generated for the release.
+runs:
+  using: node20
+  main: src/action.js

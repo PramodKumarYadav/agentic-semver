@@ -1,0 +1,44 @@
+{
+  "name": "@pramodkumaryadav/agentic-semver",
+  "version": "0.1.0",
+  "description": "A library and GitHub Action for AI-driven semantic versioning and changelog generation.",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "files": [
+    "src",
+    "action.yml",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "semantic-versioning",
+    "github-action",
+    "anthropic",
+    "changelog"
+  ],
+  "author": "Pramod Kumar Yadav",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PramodKumarYadav/agentic-semver.git"
+  },
+  "bugs": {
+    "url": "https://github.com/PramodKumarYadav/agentic-semver/issues"
+  },
+  "homepage": "https://github.com/PramodKumarYadav/agentic-semver#readme",
+  "dependencies": {
+    "@actions/core": "^3.0.1",
+    "@actions/github": "^9.1.1",
+    "@anthropic-ai/sdk": "^0.102.0",
+    "semver": "^7.8.2"
+  }
+}
