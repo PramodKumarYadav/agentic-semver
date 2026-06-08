@@ -104,6 +104,7 @@ jobs:
 | `max-files` | `40` | Max changed files included in the Claude prompt |
 | `commit-changes` | `true` | Commit `package.json` and `CHANGELOG.md` back to the PR branch |
 | `comment-summary` | `false` | Post a PR comment with the bump recommendation and changelog entry |
+| `apply-label` | `true` | Apply a `major`, `minor`, or `patch` label to the pull request |
 
 ## Library usage
 

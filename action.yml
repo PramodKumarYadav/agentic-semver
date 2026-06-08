@@ -34,7 +34,11 @@ inputs:
   comment-summary:
     description: Post a pull request comment summarizing the recommended bump and changelog entry.
     required: false
-    default: "false"
+    default: 'false'
+  apply-label:
+    description: Apply a label (major, minor, or patch) to the pull request based on the recommended bump.
+    required: false
+    default: 'true'
 outputs:
   skipped:
     description: Whether the action skipped processing.
