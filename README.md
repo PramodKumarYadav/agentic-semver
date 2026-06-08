@@ -1,6 +1,6 @@
 # agentic-semver
 
-`agentic-semver` is both an npm library and a GitHub Action that uses Claude to inspect pull request changes, choose the right semantic version bump, and write a changelog entry for the resulting release.
+`agentic-semver` is a GitHub Action that uses Claude to inspect pull request changes, choose the right semantic version bump, update `package.json` and `CHANGELOG.md`, and automatically publish a release — with zero commit convention requirements.
 
 ## What it does
 
@@ -81,14 +81,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: npm
-
-      - run: npm ci
-
-      - uses: ./
+      - uses: PramodKumarYadav/agentic-semver@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -127,7 +120,7 @@ The AI diff analysis works on **any language** — Claude can classify Python, G
 For other ecosystems, set `commit-changes: false` and use the action outputs to update your own version file:
 
 ```yaml
-- uses: PramodKumarYadav/agentic-semver@main
+- uses: PramodKumarYadav/agentic-semver@v1
   id: semver
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -148,52 +141,60 @@ For other ecosystems, set `commit-changes: false` and use the action outputs to 
     git add pyproject.toml
     git commit -m "chore: bump version to ${{ steps.semver.outputs.next-version }}"
     git push
+
 ```
 
 The `bump`, `next-version`, `summary`, and `changelog-entry` outputs are always available for you to wire into any toolchain.
 
-## Library usage
+## Release action
 
-```js
-const Anthropic = require('@anthropic-ai/sdk');
-const {
-  analyzePullRequest,
-  applyVersionRecommendation
-} = require('@pramodyadav027/agentic-semver');
+`agentic-semver` ships a second, standalone action at `PramodKumarYadav/agentic-semver/release` that creates GitHub Releases automatically — no shell scripting required.
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+It reads the version directly from your version file, extracts the matching section from `CHANGELOG.md`, and creates an idempotent GitHub Release. Running it twice for the same version is safe — it detects the existing release and skips.
 
-const recommendation = await analyzePullRequest({
-  anthropic,
-  model: 'claude-sonnet-4-5',
-  repositoryFullName: 'owner/repo',
-  baseRef: 'main',
-  headRef: 'feature-branch',
-  currentVersion: '1.2.3',
-  pullRequest: {
-    number: 42,
-    title: 'Add API pagination',
-    body: 'Introduces pagination support for search endpoints.'
-  },
-  files: [
-    {
-      filename: 'src/api.js',
-      status: 'modified',
-      additions: 12,
-      deletions: 3,
-      changes: 15,
-      patch: '@@ ...'
-    }
-  ],
-  maxFiles: 40
-});
+Supports **Node.js** (`package.json`), **Python** (`pyproject.toml`), and **Java** (`pom.xml`, `gradle.properties`) out of the box. The version file is auto-detected; no configuration needed for most projects.
 
-const result = applyVersionRecommendation({
-  packageJsonPath: 'package.json',
-  changelogPath: 'CHANGELOG.md',
-  baseVersion: '1.2.3',
-  recommendation
-});
+```yaml
+name: Release
 
-console.log(result.nextVersion);
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: PramodKumarYadav/agentic-semver/release@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # version-file: pyproject.toml   # optional — auto-detected by default
+          # changelog-path: CHANGELOG.md   # optional — default: CHANGELOG.md
+          # tag-prefix: v                  # optional — default: v
+
 ```
+
+### Release action inputs
+
+| Input | Default | Description |
+| --- | --- | --- |
+| `github-token` | none | Token with `contents: write` permission to create releases |
+| `version-file` | auto-detected | Path to version file. Auto-detects `package.json`, `pyproject.toml`, `pom.xml`, `gradle.properties` |
+| `changelog-path` | `CHANGELOG.md` | Changelog file to extract release notes from |
+| `tag-prefix` | `v` | Prefix for the git tag (e.g. `v` → `v1.2.3`) |
+| `draft` | `false` | Create the release as a draft |
+| `prerelease` | `false` | Mark the release as a pre-release |
+
+### Release action outputs
+
+| Output | Description |
+| --- | --- |
+| `version` | Version read from the version file (e.g. `1.2.3`) |
+| `tag` | Full tag name created or found (e.g. `v1.2.3`) |
+| `released` | `'true'` if a new release was created, `'false'` if it already existed |

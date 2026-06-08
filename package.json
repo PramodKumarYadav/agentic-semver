@@ -8,6 +8,7 @@
   "files": [
     "dist",
     "action.yml",
+    "release",
     "README.md",
     "CHANGELOG.md"
   ],
