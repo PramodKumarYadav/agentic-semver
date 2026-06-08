@@ -8,7 +8,6 @@ import Anthropic from '@anthropic-ai/sdk';
 import {
   analyzePullRequest,
   applyVersionRecommendation,
-  resolveRepositoryFile,
   type AnalysisRecommendation,
   type ApplyVersionResult,
   type ChangedFile
@@ -56,16 +55,17 @@ export async function loadBaseVersion(
       return parsed.version ?? fallbackVersion;
     }
 
-    // For other version files, write to a temp file and use readVersionFromFile.
+    // For other version files, write to a unique temp file and use readVersionFromFile.
     const os = await import('node:os');
-    const tmpFile = path.join(os.tmpdir(), basename);
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentic-semver-'));
+    const tmpFile = path.join(tmpDir, basename);
     fs.writeFileSync(tmpFile, decoded);
     try {
       return readVersionFromFile(tmpFile);
     } catch {
       return fallbackVersion;
     } finally {
-      fs.rmSync(tmpFile, { force: true });
+      fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   } catch (error) {
     const err = error as { status?: number; message?: string };
@@ -121,7 +121,7 @@ export function commitAndPushChanges({
   execFileSync('git', ['add', ...filesToStage]);
 
   if (!hasStagedChanges([versionFilePath, changelogPath])) {
-    core.info('package.json and CHANGELOG.md are already up to date.');
+    core.info(`${path.basename(versionFilePath)} and ${path.basename(changelogPath)} are already up to date.`);
     return false;
   }
 
@@ -260,7 +260,9 @@ export async function run(): Promise<void> {
     });
 
     // Ignore the version file and changelog from the diff — they're not user code.
-    const filesToIgnore = [resolvedVersionFile, resolveRepositoryFile(changelogPath)]
+    // Both paths must be relative to workdir to match GitHub's file.filename values.
+    const resolvedChangelogPath = path.resolve(workdir, changelogPath);
+    const filesToIgnore = [resolvedVersionFile, resolvedChangelogPath]
       .map((f) => path.relative(workdir, f));
     const allFiles = await octokit.paginate(octokit.rest.pulls.listFiles, {
       owner,
@@ -295,7 +297,7 @@ export async function run(): Promise<void> {
 
     const result = applyVersionRecommendation({
       versionFilePath: resolvedVersionFile,
-      changelogPath: resolveRepositoryFile(changelogPath),
+      changelogPath: resolvedChangelogPath,
       baseVersion,
       recommendation
     });

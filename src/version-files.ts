@@ -114,7 +114,7 @@ export function detectVersionFile(workdir: string = process.cwd()): string {
   throw new Error(
     `Could not auto-detect a version file. ` +
       `Checked: ${VERSION_FILE_CANDIDATES.join(', ')}. ` +
-      `Set the "version-file" input explicitly.`
+      `Specify the path explicitly using the version-file-path input.`
   );
 }
 

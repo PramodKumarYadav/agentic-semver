@@ -52,7 +52,7 @@ export async function runRelease(): Promise<void> {
   try {
     const githubToken = core.getInput('github-token', { required: true });
     const changelogPath = (core.getInput('changelog-path') || 'CHANGELOG.md').replace(/^\.\//, '');
-    const versionFileInput = core.getInput('version-file').replace(/^\.\//, '');
+    const versionFileInput = core.getInput('version-file-path').replace(/^\.\//, '');
     const tagPrefix = core.getInput('tag-prefix') || 'v';
     const draft = core.getBooleanInput('draft');
     const prerelease = core.getBooleanInput('prerelease');

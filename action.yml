@@ -18,7 +18,6 @@ inputs:
     description: >
       Path to the version file to update. Auto-detected when not specified.
       Supported files: package.json, pyproject.toml, pom.xml, gradle.properties.
-      Overrides package-json-path when set.
     required: false
     default: ""
   changelog-path:
