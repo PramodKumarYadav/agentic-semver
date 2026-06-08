@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyVersionRecommendation, parseAnalysisResponse, upsertChangelogEntry } from '../src/index.js';
+import { applyVersionRecommendation, parseAnalysisResponse, upsertChangelogEntry, writeVersionToFile } from '../src/index.js';
 
 test('parseAnalysisResponse accepts fenced JSON', () => {
   const result = parseAnalysisResponse(
@@ -31,8 +31,8 @@ test('applyVersionRecommendation updates package.json and changelog idempotently
     changelog: ['Introduces generated changelog output', 'Keeps existing API behaviour intact']
   };
 
-  const firstRun = applyVersionRecommendation({ packageJsonPath, changelogPath, baseVersion: '1.2.3', recommendation, date: '2026-06-08' });
-  const secondRun = applyVersionRecommendation({ packageJsonPath, changelogPath, baseVersion: '1.2.3', recommendation, date: '2026-06-08' });
+  const firstRun = applyVersionRecommendation({ versionFilePath: packageJsonPath, changelogPath, baseVersion: '1.2.3', recommendation, date: '2026-06-08' });
+  const secondRun = applyVersionRecommendation({ versionFilePath: packageJsonPath, changelogPath, baseVersion: '1.2.3', recommendation, date: '2026-06-08' });
 
   assert.equal(firstRun.nextVersion, '1.3.0');
   assert.equal(secondRun.nextVersion, '1.3.0');
@@ -64,3 +64,104 @@ test('upsertChangelogEntry replaces an existing version section', () => {
   assert.match(updated, /Summary: New text/);
   assert.equal((updated.match(/## 1\.3\.0 - 2026-06-08/g) ?? []).length, 1);
 });
+
+// ---------------------------------------------------------------------------
+// writeVersionToFile
+// ---------------------------------------------------------------------------
+
+test('writeVersionToFile updates package.json version', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'semver-test-'));
+  const file = path.join(dir, 'package.json');
+  fs.writeFileSync(file, JSON.stringify({ name: 'my-pkg', version: '1.0.0' }, null, 2) + '\n');
+  writeVersionToFile(file, '2.0.0');
+  const result = JSON.parse(fs.readFileSync(file, 'utf8')) as { version: string };
+  assert.equal(result.version, '2.0.0');
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('writeVersionToFile updates pyproject.toml [project] version', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'semver-test-'));
+  const file = path.join(dir, 'pyproject.toml');
+  fs.writeFileSync(file, '[project]\nname = "my-app"\nversion = "1.0.0"\n');
+  writeVersionToFile(file, '2.0.0');
+  const content = fs.readFileSync(file, 'utf8');
+  assert.ok(content.includes('version = "2.0.0"'));
+  assert.ok(!content.includes('"1.0.0"'));
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('writeVersionToFile updates pyproject.toml [tool.poetry] version', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'semver-test-'));
+  const file = path.join(dir, 'pyproject.toml');
+  fs.writeFileSync(file, '[tool.poetry]\nname = "my-app"\nversion = "1.5.0"\n');
+  writeVersionToFile(file, '2.0.0');
+  const content = fs.readFileSync(file, 'utf8');
+  assert.ok(content.includes('version = "2.0.0"'));
+  assert.ok(!content.includes('"1.5.0"'));
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('writeVersionToFile does not touch version fields outside [project]/[tool.poetry] in pyproject.toml', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'semver-test-'));
+  const file = path.join(dir, 'pyproject.toml');
+  fs.writeFileSync(file, '[build-system]\nrequires = ["setuptools>=61"]\n[project]\nname = "my-app"\nversion = "1.0.0"\n');
+  writeVersionToFile(file, '2.0.0');
+  const content = fs.readFileSync(file, 'utf8');
+  // build-system section unchanged; project version updated
+  assert.ok(content.includes('[build-system]'));
+  assert.ok(content.includes('version = "2.0.0"'));
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('writeVersionToFile updates pom.xml version', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'semver-test-'));
+  const file = path.join(dir, 'pom.xml');
+  fs.writeFileSync(file, '<project>\n  <groupId>com.example</groupId>\n  <version>1.0.0</version>\n</project>\n');
+  writeVersionToFile(file, '2.0.0');
+  const content = fs.readFileSync(file, 'utf8');
+  assert.ok(content.includes('<version>2.0.0</version>'));
+  assert.ok(!content.includes('<version>1.0.0</version>'));
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('writeVersionToFile updates project version not parent version in pom.xml', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'semver-test-'));
+  const file = path.join(dir, 'pom.xml');
+  const content = [
+    '<project>',
+    '  <parent>',
+    '    <groupId>org.springframework.boot</groupId>',
+    '    <version>3.2.0</version>',
+    '  </parent>',
+    '  <version>1.0.0</version>',
+    '</project>'
+  ].join('\n');
+  fs.writeFileSync(file, content);
+  writeVersionToFile(file, '2.0.0');
+  const updated = fs.readFileSync(file, 'utf8');
+  // Parent version unchanged, project version updated
+  assert.ok(updated.includes('<version>3.2.0</version>'));
+  assert.ok(updated.includes('<version>2.0.0</version>'));
+  assert.ok(!updated.includes('<version>1.0.0</version>'));
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('writeVersionToFile updates gradle.properties version', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'semver-test-'));
+  const file = path.join(dir, 'gradle.properties');
+  fs.writeFileSync(file, 'group=com.example\nversion=1.0.0\n');
+  writeVersionToFile(file, '2.0.0');
+  const content = fs.readFileSync(file, 'utf8');
+  assert.ok(content.includes('version=2.0.0'));
+  assert.ok(!content.includes('version=1.0.0'));
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('writeVersionToFile throws for unsupported file type', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'semver-test-'));
+  const file = path.join(dir, 'build.gradle');
+  fs.writeFileSync(file, "version = '1.0.0'\n");
+  assert.throws(() => writeVersionToFile(file, '2.0.0'), /Unsupported version file/);
+  fs.rmSync(dir, { recursive: true });
+});
+

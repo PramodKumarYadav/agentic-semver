@@ -8,7 +8,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import {
   analyzePullRequest,
   applyVersionRecommendation,
-  readPackageVersion,
+  detectVersionFile,
+  readVersionFromFile,
   resolveRepositoryFile,
   type AnalysisRecommendation,
   type ApplyVersionResult,
@@ -19,7 +20,7 @@ interface LoadBaseVersionParams {
   owner: string;
   repo: string;
   baseRef: string;
-  packageJsonPath: string;
+  versionFilePath: string;
   fallbackVersion: string;
 }
 
@@ -38,10 +39,10 @@ interface OctokitLike {
 
 export async function loadBaseVersion(
   octokit: OctokitLike,
-  { owner, repo, baseRef, packageJsonPath, fallbackVersion }: LoadBaseVersionParams
+  { owner, repo, baseRef, versionFilePath, fallbackVersion }: LoadBaseVersionParams
 ): Promise<string> {
   try {
-    const response = await octokit.rest.repos.getContent({ owner, repo, path: packageJsonPath, ref: baseRef });
+    const response = await octokit.rest.repos.getContent({ owner, repo, path: versionFilePath, ref: baseRef });
     const data = response.data as Record<string, unknown>;
 
     if (!('content' in data)) {
@@ -49,12 +50,28 @@ export async function loadBaseVersion(
     }
 
     const decoded = Buffer.from(data.content as string, 'base64').toString('utf8');
-    const parsed = JSON.parse(decoded) as { version?: string };
-    return parsed.version ?? fallbackVersion;
+    const basename = path.basename(versionFilePath);
+
+    if (basename === 'package.json') {
+      const parsed = JSON.parse(decoded) as { version?: string };
+      return parsed.version ?? fallbackVersion;
+    }
+
+    // For other version files, write to a temp file and use readVersionFromFile.
+    const os = await import('node:os');
+    const tmpFile = path.join(os.tmpdir(), basename);
+    fs.writeFileSync(tmpFile, decoded);
+    try {
+      return readVersionFromFile(tmpFile);
+    } catch {
+      return fallbackVersion;
+    } finally {
+      fs.rmSync(tmpFile, { force: true });
+    }
   } catch (error) {
     const err = error as { status?: number; message?: string };
     if (err.status === 404) {
-      core.info(`No ${packageJsonPath} found on ${baseRef}; using the workspace version as the baseline.`);
+      core.info(`No ${versionFilePath} found on ${baseRef}; using the workspace version as the baseline.`);
       return fallbackVersion;
     }
 
@@ -79,14 +96,14 @@ function hasStagedChanges(files: string[]): boolean {
 
 interface CommitAndPushParams {
   pullRequest: { head: { ref: string } };
-  packageJsonPath: string;
+  versionFilePath: string;
   changelogPath: string;
   nextVersion: string;
 }
 
 export function commitAndPushChanges({
   pullRequest,
-  packageJsonPath,
+  versionFilePath,
   changelogPath,
   nextVersion
 }: CommitAndPushParams): boolean {
@@ -94,14 +111,17 @@ export function commitAndPushChanges({
   execFileSync('git', ['config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com']);
   execFileSync('git', ['checkout', '-B', pullRequest.head.ref]);
 
-  const filesToStage = [packageJsonPath, changelogPath];
-  const lockPath = path.join(path.dirname(path.resolve(packageJsonPath)), 'package-lock.json');
-  if (fs.existsSync(lockPath)) {
-    filesToStage.push(lockPath);
+  const filesToStage = [versionFilePath, changelogPath];
+  // Keep package-lock.json in sync for Node.js projects.
+  if (path.basename(versionFilePath) === 'package.json') {
+    const lockPath = path.join(path.dirname(path.resolve(versionFilePath)), 'package-lock.json');
+    if (fs.existsSync(lockPath)) {
+      filesToStage.push(lockPath);
+    }
   }
   execFileSync('git', ['add', ...filesToStage]);
 
-  if (!hasStagedChanges([packageJsonPath, changelogPath])) {
+  if (!hasStagedChanges([versionFilePath, changelogPath])) {
     core.info('package.json and CHANGELOG.md are already up to date.');
     return false;
   }
@@ -201,13 +221,13 @@ export async function run(): Promise<void> {
     const githubToken = core.getInput('github-token', { required: true });
     const anthropicApiKey = core.getInput('anthropic-api-key', { required: true });
     const model = core.getInput('model') || 'claude-sonnet-4-5';
-    const packageJsonPath = (core.getInput('package-json-path') || 'package.json').replace(/^\.\//, '');
     const changelogPath = (core.getInput('changelog-path') || 'CHANGELOG.md').replace(/^\.\//, '');
     const targetBaseBranch = core.getInput('target-base-branch') || 'main';
     const maxFiles = Number.parseInt(core.getInput('max-files') || '40', 10);
     const commitChanges = core.getBooleanInput('commit-changes');
     const commentSummary = core.getBooleanInput('comment-summary');
     const applyLabel = core.getBooleanInput('apply-label');
+    const versionFileInput = core.getInput('version-file-path').replace(/^\.\//, '');
 
     const pullRequest = github.context.payload.pull_request;
     if (!pullRequest) {
@@ -222,25 +242,37 @@ export async function run(): Promise<void> {
 
     const { owner, repo } = github.context.repo;
     const octokit = github.getOctokit(githubToken);
-    const workspaceVersion = readPackageVersion(resolveRepositoryFile(packageJsonPath));
+
+    // Resolve which version file to use. Explicit input beats auto-detect.
+    const workdir = process.env.GITHUB_WORKSPACE ?? process.cwd();
+    const resolvedVersionFile = versionFileInput
+      ? path.resolve(workdir, versionFileInput)
+      : detectVersionFile(workdir);
+
+    core.info(`Using version file: ${resolvedVersionFile}`);
+    const workspaceVersion = readVersionFromFile(resolvedVersionFile);
+
     const baseVersion = await loadBaseVersion(octokit, {
       owner,
       repo,
       baseRef: String(pullRequest.base.ref),
-      packageJsonPath,
+      versionFilePath: path.relative(workdir, resolvedVersionFile),
       fallbackVersion: workspaceVersion
     });
 
+    // Ignore the version file and changelog from the diff — they're not user code.
+    const filesToIgnore = [resolvedVersionFile, resolveRepositoryFile(changelogPath)]
+      .map((f) => path.relative(workdir, f));
     const allFiles = await octokit.paginate(octokit.rest.pulls.listFiles, {
       owner,
       repo,
       pull_number: pullRequest.number as number,
       per_page: 100
     });
-    const relevantFiles = filterRelevantFiles(allFiles, [packageJsonPath, changelogPath]);
+    const relevantFiles = filterRelevantFiles(allFiles, filesToIgnore);
 
     if (relevantFiles.length === 0) {
-      core.info('No code changes remain after ignoring package.json and CHANGELOG.md; skipping version recommendation.');
+      core.info('No code changes remain after ignoring version and changelog files; skipping version recommendation.');
       core.setOutput('skipped', 'true');
       return;
     }
@@ -263,7 +295,7 @@ export async function run(): Promise<void> {
     });
 
     const result = applyVersionRecommendation({
-      packageJsonPath: resolveRepositoryFile(packageJsonPath),
+      versionFilePath: resolvedVersionFile,
       changelogPath: resolveRepositoryFile(changelogPath),
       baseVersion,
       recommendation
@@ -291,7 +323,7 @@ export async function run(): Promise<void> {
     if (commitChanges && !isFork) {
       commitAndPushChanges({
         pullRequest: { head: { ref: String(pullRequest.head.ref) } },
-        packageJsonPath,
+        versionFilePath: path.relative(workdir, resolvedVersionFile),
         changelogPath,
         nextVersion: result.nextVersion
       });

@@ -182,8 +182,99 @@ function writeJsonFile(filePath: string, value: unknown): void {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-export function readPackageVersion(packageJsonPath: string): string {
-  return String(readJsonFile(packageJsonPath).version);
+export function readVersionFromFile(filePath: string): string {
+  const content = fs.readFileSync(filePath, 'utf8');
+  const basename = path.basename(filePath);
+
+  if (basename === 'package.json') {
+    const pkg = JSON.parse(content) as { version?: string };
+    if (!pkg.version) throw new Error(`No "version" field in ${filePath}`);
+    return pkg.version;
+  }
+
+  if (basename === 'pyproject.toml') {
+    // Scope the search to [project] or [tool.poetry] sections only.
+    const match = /^\[(project|tool\.poetry)\][^\[]*?^\s*version\s*=\s*["']([^"']+)["']/m.exec(content);
+    if (!match) throw new Error(`No version field found in ${filePath}`);
+    return match[2];
+  }
+
+  if (basename === 'pom.xml') {
+    // Strip <parent>...</parent> first to avoid picking up the parent version.
+    const withoutParent = content.replace(/<parent>[\s\S]*?<\/parent>/i, '');
+    const match = /<version>\s*([^<]+?)\s*<\/version>/.exec(withoutParent);
+    if (!match) throw new Error(`No <version> tag found in ${filePath}`);
+    return match[1];
+  }
+
+  if (basename === 'gradle.properties') {
+    const match = /^\s*version\s*=\s*(.+)/m.exec(content);
+    if (!match) throw new Error(`No version= line found in ${filePath}`);
+    return match[1].trim();
+  }
+
+  throw new Error(
+    `Unsupported version file: ${basename}. ` +
+      `Supported files: package.json, pyproject.toml, pom.xml, gradle.properties.`
+  );
+}
+
+const VERSION_FILE_CANDIDATES = ['package.json', 'pyproject.toml', 'pom.xml', 'gradle.properties'];
+
+export function detectVersionFile(workdir: string = process.cwd()): string {
+  for (const candidate of VERSION_FILE_CANDIDATES) {
+    const full = path.join(workdir, candidate);
+    if (fs.existsSync(full)) return full;
+  }
+  throw new Error(
+    `Could not auto-detect a version file. ` +
+      `Checked: ${VERSION_FILE_CANDIDATES.join(', ')}. ` +
+      `Set the "version-file" input explicitly.`
+  );
+}
+
+export function writeVersionToFile(filePath: string, version: string): void {
+  const content = fs.readFileSync(filePath, 'utf8');
+  const basename = path.basename(filePath);
+
+  if (basename === 'package.json') {
+    const pkg = readJsonFile(filePath);
+    pkg.version = version;
+    writeJsonFile(filePath, pkg);
+    return;
+  }
+
+  if (basename === 'pyproject.toml') {
+    // Replace the version line inside [project] or [tool.poetry] only.
+    const updated = content.replace(
+      /(^\[(project|tool\.poetry)\][^\[]*?^\s*version\s*=\s*)["'][^"']+["']/ms,
+      (_, prefix) => `${prefix}"${version}"`
+    );
+    if (updated === content) throw new Error(`Could not update version in ${filePath}`);
+    fs.writeFileSync(filePath, updated);
+    return;
+  }
+
+  if (basename === 'pom.xml') {
+    // Replace the project <version> tag, skipping any <parent> block.
+    const withoutParent = content.replace(/(<parent>[\s\S]*?<\/parent>)/i, (match) => match.replace(/</g, '\x00'));
+    const updated = withoutParent.replace(/<version>[^<]+<\/version>/, `<version>${version}<\/version>`);
+    if (updated === withoutParent) throw new Error(`Could not update <version> in ${filePath}`);
+    fs.writeFileSync(filePath, updated.replace(/\x00/g, '<'));
+    return;
+  }
+
+  if (basename === 'gradle.properties') {
+    const updated = content.replace(/^(\s*version\s*=\s*).+/m, `$1${version}`);
+    if (updated === content) throw new Error(`Could not update version in ${filePath}`);
+    fs.writeFileSync(filePath, updated);
+    return;
+  }
+
+  throw new Error(
+    `Unsupported version file: ${basename}. ` +
+      `Supported files: package.json, pyproject.toml, pom.xml, gradle.properties.`
+  );
 }
 
 function calculateNextVersion(currentVersion: string, bump: string): string {
@@ -241,7 +332,7 @@ export function upsertChangelogEntry(existingContent: string, entry: string, ver
 }
 
 export interface ApplyVersionRecommendationParams {
-  packageJsonPath: string;
+  versionFilePath: string;
   changelogPath: string;
   baseVersion: string;
   recommendation: AnalysisRecommendation;
@@ -249,28 +340,30 @@ export interface ApplyVersionRecommendationParams {
 }
 
 export function applyVersionRecommendation({
-  packageJsonPath,
+  versionFilePath,
   changelogPath,
   baseVersion,
   recommendation,
   date = formatDate()
 }: ApplyVersionRecommendationParams): ApplyVersionResult {
-  const packageJson = readJsonFile(packageJsonPath);
   const nextVersion = calculateNextVersion(baseVersion, recommendation.bump);
-  packageJson.version = nextVersion;
-  writeJsonFile(packageJsonPath, packageJson);
 
-  const lockPath = path.join(path.dirname(packageJsonPath), 'package-lock.json');
-  if (fs.existsSync(lockPath)) {
-    const lock = readJsonFile(lockPath) as {
-      version: string;
-      packages?: Record<string, { version: string }>;
-    };
-    lock.version = nextVersion;
-    if (lock.packages?.['']) {
-      lock.packages[''].version = nextVersion;
+  writeVersionToFile(versionFilePath, nextVersion);
+
+  // For Node.js projects keep package-lock.json in sync.
+  if (path.basename(versionFilePath) === 'package.json') {
+    const lockPath = path.join(path.dirname(versionFilePath), 'package-lock.json');
+    if (fs.existsSync(lockPath)) {
+      const lock = readJsonFile(lockPath) as {
+        version: string;
+        packages?: Record<string, { version: string }>;
+      };
+      lock.version = nextVersion;
+      if (lock.packages?.['']) {
+        lock.packages[''].version = nextVersion;
+      }
+      writeJsonFile(lockPath, lock);
     }
-    writeJsonFile(lockPath, lock);
   }
 
   const existingChangelog = fs.existsSync(changelogPath)
