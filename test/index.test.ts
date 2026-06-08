@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyVersionRecommendation, parseAnalysisResponse, upsertChangelogEntry } from '../src/index';
+import { applyVersionRecommendation, parseAnalysisResponse, upsertChangelogEntry } from '../src/index.js';
 
 test('parseAnalysisResponse accepts fenced JSON', () => {
   const result = parseAnalysisResponse(

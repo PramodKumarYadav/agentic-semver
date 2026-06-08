@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as core from '@actions/core';
 import * as github from '@actions/github';
 import Anthropic from '@anthropic-ai/sdk';
@@ -12,7 +13,7 @@ import {
   type AnalysisRecommendation,
   type ApplyVersionResult,
   type ChangedFile
-} from './index';
+} from './index.js';
 
 interface LoadBaseVersionParams {
   owner: string;
@@ -263,6 +264,6 @@ export async function run(): Promise<void> {
   }
 }
 
-if (require.main === module) {
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
   void run();
 }
