@@ -20,7 +20,7 @@ A companion action, `create-release`, creates GitHub Releases idempotently from 
 
 ## How it works
 
-```
+```ini
 PR opened / updated
         │
         ▼
@@ -48,7 +48,7 @@ create-release action runs
 
 ## Prerequisites
 
-- An **Anthropic API key** with access to Claude. Store it as a repository secret named `ANTHROPIC_API_KEY`.
+- An __Anthropic API key__ with access to Claude. Store it as a repository secret named `ANTHROPIC_API_KEY`.
 - A repository with a supported version file at the root (or specify the path explicitly).
 
 ### Supported version files
