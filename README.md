@@ -1,2 +1,127 @@
 # agentic-semver
-A library and a github action that gives reliable semver based on code commit analysis.
+
+`agentic-semver` is both an npm library and a GitHub Action that uses Claude to inspect pull request changes, choose the right semantic version bump, and write a changelog entry for the resulting release.
+
+## What it does
+
+- Reads the pull request diff targeting `main`
+- Sends the PR title, body, and changed file patches to Claude
+- Classifies the change as a `patch`, `minor`, or `major` release
+- Updates `package.json` with the next version derived from the base branch version
+- Upserts a new entry in `CHANGELOG.md`
+- Optionally commits the generated version files back to the pull request branch
+
+## Repository workflows
+
+### Pull request automation
+
+The repository includes `.github/workflows/agentic-semver.yml`, which runs on pull requests to `main` when `ANTHROPIC_API_KEY` is configured.
+
+Required secret:
+
+- `ANTHROPIC_API_KEY`: Claude API key used to analyze the pull request
+
+The workflow checks out the repository, installs dependencies with `npm ci`, and runs the local action in `action.yml`.
+
+### npm publishing
+
+The repository also includes `.github/workflows/publish.yml`, which publishes the package to npm whenever a GitHub release is published and `NPM_TOKEN` is configured.
+
+Required secret:
+
+- `NPM_TOKEN`: npm automation token with permission to publish `@pramodkumaryadav/agentic-semver`
+
+## Using the action
+
+```yaml
+name: Agentic SemVer
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      - uses: ./
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+## Action inputs
+
+| Input | Default | Description |
+| --- | --- | --- |
+| `github-token` | none | Token used to fetch pull request metadata and push generated commits |
+| `anthropic-api-key` | none | API key used to call Claude |
+| `model` | `claude-3-5-sonnet-latest` | Claude model used for analysis |
+| `package-json-path` | `package.json` | Manifest whose version will be updated |
+| `changelog-path` | `CHANGELOG.md` | Changelog file to update |
+| `target-base-branch` | `main` | Only PRs against this branch are processed |
+| `max-files` | `40` | Max changed files included in the Claude prompt |
+| `commit-changes` | `true` | Commit `package.json` and `CHANGELOG.md` back to the PR branch |
+| `comment-summary` | `false` | Post a PR comment with the bump recommendation and changelog entry |
+
+## Library usage
+
+```js
+const Anthropic = require('@anthropic-ai/sdk');
+const {
+  analyzePullRequest,
+  applyVersionRecommendation
+} = require('@pramodkumaryadav/agentic-semver');
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+const recommendation = await analyzePullRequest({
+  anthropic,
+  model: 'claude-3-5-sonnet-latest',
+  repositoryFullName: 'owner/repo',
+  baseRef: 'main',
+  headRef: 'feature-branch',
+  currentVersion: '1.2.3',
+  pullRequest: {
+    number: 42,
+    title: 'Add API pagination',
+    body: 'Introduces pagination support for search endpoints.'
+  },
+  files: [
+    {
+      filename: 'src/api.js',
+      status: 'modified',
+      additions: 12,
+      deletions: 3,
+      changes: 15,
+      patch: '@@ ...'
+    }
+  ],
+  maxFiles: 40
+});
+
+const result = applyVersionRecommendation({
+  packageJsonPath: 'package.json',
+  changelogPath: 'CHANGELOG.md',
+  baseVersion: '1.2.3',
+  recommendation
+});
+
+console.log(result.nextVersion);
+```
