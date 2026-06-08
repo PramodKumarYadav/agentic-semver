@@ -151,22 +151,22 @@ export async function applyVersionLabel(
   octokit: OctokitWithLabels,
   { owner, repo, issueNumber, bump }: { owner: string; repo: string; issueNumber: number; bump: string }
 ): Promise<void> {
-  // Ensure the label exists with the right colour.
-  try {
-    await octokit.rest.issues.updateLabel({
-      owner, repo, name: bump,
-      color: LABEL_COLORS[bump],
-      description: `Semver ${bump} change`
-    });
-  } catch {
-    await octokit.rest.issues.createLabel({
-      owner, repo, name: bump,
-      color: LABEL_COLORS[bump],
-      description: `Semver ${bump} change`
-    });
+  if (!SEMVER_LABELS.has(bump)) {
+    throw new Error(`Cannot apply label: "${bump}" is not a recognised semver bump type.`);
   }
 
-  // Remove any existing semver labels from the PR.
+  const color = LABEL_COLORS[bump];
+
+  // Ensure the label exists with the right colour — fall back to create only on 404.
+  try {
+    await octokit.rest.issues.updateLabel({ owner, repo, name: bump, color, description: `Semver ${bump} change` });
+  } catch (err) {
+    const status = (err as { status?: number }).status;
+    if (status !== 404) throw err;
+    await octokit.rest.issues.createLabel({ owner, repo, name: bump, color, description: `Semver ${bump} change` });
+  }
+
+  // Remove any other semver labels already on the PR.
   const { data: currentLabels } = await octokit.rest.issues.listLabelsOnIssue({ owner, repo, issue_number: issueNumber });
   for (const label of currentLabels) {
     if (SEMVER_LABELS.has(label.name) && label.name !== bump) {
@@ -310,12 +310,20 @@ export async function run(): Promise<void> {
     }
 
     if (applyLabel) {
-      await applyVersionLabel(octokit as unknown as OctokitWithLabels, {
-        owner,
-        repo,
-        issueNumber: pullRequest.number as number,
-        bump: recommendation.bump
-      });
+      if (isFork) {
+        core.warning('Skipping label application because the pull request comes from a fork.');
+      } else {
+        try {
+          await applyVersionLabel(octokit as unknown as OctokitWithLabels, {
+            owner,
+            repo,
+            issueNumber: pullRequest.number as number,
+            bump: recommendation.bump
+          });
+        } catch (labelErr) {
+          core.warning(`Failed to apply version label: ${labelErr instanceof Error ? labelErr.message : String(labelErr)}`);
+        }
+      }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

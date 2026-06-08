@@ -36,7 +36,7 @@ inputs:
     required: false
     default: "false"
   apply-label:
-    description: Apply a label (major, minor, or patch) to the pull request based on the recommended bump.
+    description: Apply a label (major, minor, or patch) to the pull request based on the recommended bump. Requires the workflow token to have issues:write permission.
     required: false
     default: "true"
 outputs:

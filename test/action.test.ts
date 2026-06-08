@@ -105,7 +105,8 @@ test('loadBaseVersion returns fallbackVersion when response has no content field
 
 function makeLabelsOctokit({
   existingLabels = [] as string[],
-  updateLabelThrows = false
+  updateLabelThrows = false,
+  updateLabelStatus = 404
 } = {}) {
   const created: string[] = [];
   const updated: string[] = [];
@@ -121,7 +122,7 @@ function makeLabelsOctokit({
         listLabelsOnIssue: async () => ({ data: existingLabels.map((name) => ({ name })) }),
         createLabel: async ({ name }: { name: string }) => { created.push(name); },
         updateLabel: async ({ name }: { name: string }) => {
-          if (updateLabelThrows) throw Object.assign(new Error('Not found'), { status: 404 });
+          if (updateLabelThrows) throw Object.assign(new Error('Label error'), { status: updateLabelStatus });
           updated.push(name);
         },
         addLabels: async ({ labels }: { labels: string[] }) => { added.push(...labels); },
@@ -160,4 +161,20 @@ test('applyVersionLabel does not remove the label being applied', async () => {
   await applyVersionLabel(octokit, { owner: 'o', repo: 'r', issueNumber: 1, bump: 'minor' });
   assert.deepEqual(removed, []);
   assert.deepEqual(added, ['minor']);
+});
+
+test('applyVersionLabel rethrows non-404 errors from updateLabel', async () => {
+  const { octokit } = makeLabelsOctokit({ updateLabelThrows: true, updateLabelStatus: 403 });
+  await assert.rejects(
+    () => applyVersionLabel(octokit, { owner: 'o', repo: 'r', issueNumber: 1, bump: 'minor' }),
+    /Label error/
+  );
+});
+
+test('applyVersionLabel throws when bump is not a recognised semver type', async () => {
+  const { octokit } = makeLabelsOctokit();
+  await assert.rejects(
+    () => applyVersionLabel(octokit, { owner: 'o', repo: 'r', issueNumber: 1, bump: 'invalid' }),
+    /not a recognised semver bump type/
+  );
 });

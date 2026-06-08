@@ -69,6 +69,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write  # required for apply-label
 
 jobs:
   version:
