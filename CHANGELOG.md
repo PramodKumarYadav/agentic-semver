@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0 - 2026-06-08
+
+- Summary: Added automatic PR labeling feature with major/minor/patch labels based on version bump recommendation
+- Added new `apply-label` input (default: true) to automatically apply semver labels to pull requests
+- Added `applyVersionLabel` function that creates/updates and applies major, minor, or patch labels with color coding
+- Added `issues: write` permission requirement to workflow for label management
+- Added comprehensive test coverage for label creation, updates, and removal logic
 ## 0.1.1 - 2026-06-08
 
 - Summary: Fix CI/CD pipeline configuration and migrate codebase to TypeScript
