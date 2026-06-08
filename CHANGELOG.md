@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.0 - 2026-06-08
+
+- Summary: Breaking change: renamed package-json-path input to version-file-path and added multi-language version file support (Python, Java, Gradle). The action now auto-detects version files across multiple ecosystems and the default input value changed from 'package.json' to empty string (triggering auto-detection). Version bumped to 1.0.0 in package files.
+- BREAKING: Renamed `package-json-path` input to `version-file-path` with empty default (auto-detection)
+- Added support for Python (pyproject.toml), Java (pom.xml), and Gradle (gradle.properties) version files
+- Introduced automatic version file detection across package.json, pyproject.toml, pom.xml, and gradle.properties
+- Refactored version reading/writing logic to support multiple file formats
+- Updated action outputs description from package.json-specific to generic version file terminology
+
 ## 0.3.0 - 2026-06-08
 
 - Summary: Added a new standalone create-release GitHub Action that automatically creates GitHub Releases from version files and changelog, supporting multiple ecosystems (Node.js, Python, Java). This is a new backwards-compatible capability alongside the existing semver analysis action.
