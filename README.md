@@ -13,6 +13,31 @@
 
 ## Repository workflows
 
+### End-to-end release workflow
+
+```
+PR opened / updated
+        │
+        ▼
+agentic-semver.yml runs
+  • Sends PR diff to Claude
+  • Claude classifies bump (patch / minor / major)
+  • Updates package.json and CHANGELOG.md
+  • Commits changes back to the PR branch
+        │
+        ▼
+PR reviewed and merged to main
+        │
+        ▼
+GitHub release published
+        │
+        ▼
+publish.yml runs
+  • Installs dependencies
+  • Runs tests
+  • Publishes package to npm
+```
+
 ### Pull request automation
 
 The repository includes `.github/workflows/agentic-semver.yml`, which runs on pull requests to `main` when `ANTHROPIC_API_KEY` is configured.
@@ -29,7 +54,7 @@ The repository also includes `.github/workflows/publish.yml`, which publishes th
 
 Required secret:
 
-- `NPM_TOKEN`: npm automation token with permission to publish `@pramodkumaryadav/agentic-semver`
+- `NPM_TOKEN`: npm automation token with permission to publish `@pramodyadav027/agentic-semver`
 
 ## Using the action
 
@@ -72,7 +97,7 @@ jobs:
 | --- | --- | --- |
 | `github-token` | none | Token used to fetch pull request metadata and push generated commits |
 | `anthropic-api-key` | none | API key used to call Claude |
-| `model` | `claude-3-5-sonnet-latest` | Claude model used for analysis |
+| `model` | `claude-sonnet-4-5` | Claude model used for analysis |
 | `package-json-path` | `package.json` | Manifest whose version will be updated |
 | `changelog-path` | `CHANGELOG.md` | Changelog file to update |
 | `target-base-branch` | `main` | Only PRs against this branch are processed |
@@ -87,13 +112,13 @@ const Anthropic = require('@anthropic-ai/sdk');
 const {
   analyzePullRequest,
   applyVersionRecommendation
-} = require('@pramodkumaryadav/agentic-semver');
+} = require('@pramodyadav027/agentic-semver');
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const recommendation = await analyzePullRequest({
   anthropic,
-  model: 'claude-3-5-sonnet-latest',
+  model: 'claude-sonnet-4-5',
   repositoryFullName: 'owner/repo',
   baseRef: 'main',
   headRef: 'feature-branch',

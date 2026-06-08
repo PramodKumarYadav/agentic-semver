@@ -1,8 +1,9 @@
-const fs = require('node:fs');
-const path = require('node:path');
-const semver = require('semver');
+import fs from 'node:fs';
+import path from 'node:path';
+import semver from 'semver';
+import type Anthropic from '@anthropic-ai/sdk';
 
-const SUPPORTED_BUMPS = new Set(['patch', 'minor', 'major']);
+const SUPPORTED_BUMPS = new Set<string>(['patch', 'minor', 'major']);
 const MAX_PATCH_CHARACTERS = 4000;
 const DEFAULT_SYSTEM_PROMPT = [
   'You are a release automation specialist.',
@@ -14,7 +15,54 @@ const DEFAULT_SYSTEM_PROMPT = [
   'Return 2-5 changelog bullet points and keep each bullet concise and factual.'
 ].join(' ');
 
-function buildAnalysisPrompt({ repositoryFullName, baseRef, headRef, currentVersion, pullRequest, files, maxFiles = 40 }) {
+export type BumpType = 'patch' | 'minor' | 'major';
+
+export interface PullRequestInfo {
+  number: number;
+  title: string;
+  body?: string | null;
+}
+
+export interface ChangedFile {
+  filename: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  changes: number;
+  patch?: string;
+}
+
+export interface AnalysisRecommendation {
+  bump: BumpType;
+  summary: string;
+  changelog: string[];
+}
+
+export interface ApplyVersionResult {
+  currentVersion: string;
+  nextVersion: string;
+  changelogEntry: string;
+}
+
+interface BuildAnalysisPromptParams {
+  repositoryFullName: string;
+  baseRef: string;
+  headRef: string;
+  currentVersion: string;
+  pullRequest: PullRequestInfo;
+  files: ChangedFile[];
+  maxFiles?: number;
+}
+
+function buildAnalysisPrompt({
+  repositoryFullName,
+  baseRef,
+  headRef,
+  currentVersion,
+  pullRequest,
+  files,
+  maxFiles = 40
+}: BuildAnalysisPromptParams): string {
   const selectedFiles = files.slice(0, maxFiles).map((file) => ({
     filename: file.filename,
     status: file.status,
@@ -32,24 +80,31 @@ function buildAnalysisPrompt({ repositoryFullName, baseRef, headRef, currentVers
     `Head branch: ${headRef}`,
     `Current version: ${currentVersion}`,
     `Pull request: #${pullRequest.number} - ${pullRequest.title}`,
-    `Pull request body:\n${pullRequest.body || '[no description provided]'}`,
+    `Pull request body:\n${pullRequest.body ?? '[no description provided]'}`,
     'Changed files:',
     JSON.stringify(selectedFiles, null, 2)
   ].join('\n\n');
 }
 
-function extractTextContent(content) {
+interface ContentBlock {
+  type: string;
+  text?: string;
+}
+
+function extractTextContent(content: string | ContentBlock[] | undefined): string {
   if (typeof content === 'string') {
     return content;
   }
 
-  return (content || [])
-    .filter((block) => block.type === 'text' && typeof block.text === 'string')
+  return (content ?? [])
+    .filter((block): block is { type: 'text'; text: string } =>
+      block.type === 'text' && typeof block.text === 'string'
+    )
     .map((block) => block.text)
     .join('\n');
 }
 
-function parseAnalysisResponse(responseText) {
+export function parseAnalysisResponse(responseText: string): AnalysisRecommendation {
   const trimmed = responseText.trim();
   let candidate = trimmed;
 
@@ -69,20 +124,20 @@ function parseAnalysisResponse(responseText) {
     candidate = candidate.slice(firstBraceIndex, lastBraceIndex + 1);
   }
 
-  const payload = JSON.parse(candidate);
-  const bump = String(payload.bump || '').toLowerCase();
+  const payload = JSON.parse(candidate) as Record<string, unknown>;
+  const bump = String(payload.bump ?? '').toLowerCase();
 
   if (!SUPPORTED_BUMPS.has(bump)) {
-    throw new Error(`Claude returned an unsupported bump type: ${payload.bump}`);
+    throw new Error(`Claude returned an unsupported bump type: ${String(payload.bump)}`);
   }
 
-  const summary = String(payload.summary || '').replace(/\s+/g, ' ').trim();
+  const summary = String(payload.summary ?? '').replace(/\s+/g, ' ').trim();
   if (!summary) {
     throw new Error('Claude response is missing a summary.');
   }
 
   const changelog = Array.isArray(payload.changelog)
-    ? payload.changelog
+    ? (payload.changelog as unknown[])
         .map((item) => String(item).replace(/\s+/g, ' ').trim())
         .filter((item) => item && !/^#{1,6}\s/.test(item) && !/^```/.test(item))
     : [];
@@ -91,49 +146,48 @@ function parseAnalysisResponse(responseText) {
     throw new Error('Claude response is missing changelog entries.');
   }
 
-  return { bump, summary, changelog };
+  return { bump: bump as BumpType, summary, changelog };
 }
 
-async function analyzePullRequest({ anthropic, model, repositoryFullName, baseRef, headRef, currentVersion, pullRequest, files, maxFiles }) {
-  const prompt = buildAnalysisPrompt({
-    repositoryFullName,
-    baseRef,
-    headRef,
-    currentVersion,
-    pullRequest,
-    files,
-    maxFiles
-  });
+export interface AnalyzePullRequestParams {
+  anthropic: Anthropic;
+  model: string;
+  repositoryFullName: string;
+  baseRef: string;
+  headRef: string;
+  currentVersion: string;
+  pullRequest: PullRequestInfo;
+  files: ChangedFile[];
+  maxFiles?: number;
+}
 
-  const message = await anthropic.messages.create({
-    model,
+export async function analyzePullRequest(params: AnalyzePullRequestParams): Promise<AnalysisRecommendation> {
+  const prompt = buildAnalysisPrompt(params);
+
+  const message = await params.anthropic.messages.create({
+    model: params.model,
     max_tokens: 1200,
     system: DEFAULT_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: 'user',
-        content: prompt
-      }
-    ]
+    messages: [{ role: 'user', content: prompt }]
   });
 
-  return parseAnalysisResponse(extractTextContent(message.content));
+  return parseAnalysisResponse(extractTextContent(message.content as ContentBlock[]));
 }
 
-function readJsonFile(filePath) {
-  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+function readJsonFile(filePath: string): Record<string, unknown> {
+  return JSON.parse(fs.readFileSync(filePath, 'utf8')) as Record<string, unknown>;
 }
 
-function writeJsonFile(filePath, value) {
+function writeJsonFile(filePath: string, value: unknown): void {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function readPackageVersion(packageJsonPath) {
-  return readJsonFile(packageJsonPath).version;
+export function readPackageVersion(packageJsonPath: string): string {
+  return String(readJsonFile(packageJsonPath).version);
 }
 
-function calculateNextVersion(currentVersion, bump) {
-  const nextVersion = semver.inc(currentVersion, bump);
+function calculateNextVersion(currentVersion: string, bump: string): string {
+  const nextVersion = semver.inc(currentVersion, bump as semver.ReleaseType);
 
   if (!nextVersion) {
     throw new Error(`Unable to calculate a ${bump} version from ${currentVersion}.`);
@@ -142,11 +196,18 @@ function calculateNextVersion(currentVersion, bump) {
   return nextVersion;
 }
 
-function formatDate(date = new Date()) {
+function formatDate(date = new Date()): string {
   return date.toISOString().slice(0, 10);
 }
 
-function createChangelogEntry({ version, summary, changelog, date = formatDate() }) {
+interface CreateChangelogEntryParams {
+  version: string;
+  summary: string;
+  changelog: string[];
+  date?: string;
+}
+
+function createChangelogEntry({ version, summary, changelog, date = formatDate() }: CreateChangelogEntryParams): string {
   return [
     `## ${version} - ${date}`,
     '',
@@ -156,7 +217,7 @@ function createChangelogEntry({ version, summary, changelog, date = formatDate()
   ].join('\n');
 }
 
-function upsertChangelogEntry(existingContent, entry, version) {
+export function upsertChangelogEntry(existingContent: string, entry: string, version: string): string {
   const heading = `## ${version} - `;
   const normalizedEntry = entry.trimEnd();
 
@@ -179,7 +240,21 @@ function upsertChangelogEntry(existingContent, entry, version) {
   return `${header}${normalizedEntry}\n\n${body.trimStart()}`;
 }
 
-function applyVersionRecommendation({ packageJsonPath, changelogPath, baseVersion, recommendation, date = formatDate() }) {
+export interface ApplyVersionRecommendationParams {
+  packageJsonPath: string;
+  changelogPath: string;
+  baseVersion: string;
+  recommendation: AnalysisRecommendation;
+  date?: string;
+}
+
+export function applyVersionRecommendation({
+  packageJsonPath,
+  changelogPath,
+  baseVersion,
+  recommendation,
+  date = formatDate()
+}: ApplyVersionRecommendationParams): ApplyVersionResult {
   const packageJson = readJsonFile(packageJsonPath);
   const nextVersion = calculateNextVersion(baseVersion, recommendation.bump);
   packageJson.version = nextVersion;
@@ -187,9 +262,12 @@ function applyVersionRecommendation({ packageJsonPath, changelogPath, baseVersio
 
   const lockPath = path.join(path.dirname(packageJsonPath), 'package-lock.json');
   if (fs.existsSync(lockPath)) {
-    const lock = readJsonFile(lockPath);
+    const lock = readJsonFile(lockPath) as {
+      version: string;
+      packages?: Record<string, { version: string }>;
+    };
     lock.version = nextVersion;
-    if (lock.packages && lock.packages['']) {
+    if (lock.packages?.['']) {
       lock.packages[''].version = nextVersion;
     }
     writeJsonFile(lockPath, lock);
@@ -198,6 +276,7 @@ function applyVersionRecommendation({ packageJsonPath, changelogPath, baseVersio
   const existingChangelog = fs.existsSync(changelogPath)
     ? fs.readFileSync(changelogPath, 'utf8')
     : '';
+
   const changelogEntry = createChangelogEntry({
     version: nextVersion,
     summary: recommendation.summary,
@@ -207,28 +286,9 @@ function applyVersionRecommendation({ packageJsonPath, changelogPath, baseVersio
 
   fs.writeFileSync(changelogPath, upsertChangelogEntry(existingChangelog, changelogEntry, nextVersion));
 
-  return {
-    currentVersion: baseVersion,
-    nextVersion,
-    changelogEntry
-  };
+  return { currentVersion: baseVersion, nextVersion, changelogEntry };
 }
 
-function resolveRepositoryFile(filePath) {
+export function resolveRepositoryFile(filePath: string): string {
   return path.resolve(process.cwd(), filePath);
 }
-
-module.exports = {
-  DEFAULT_SYSTEM_PROMPT,
-  analyzePullRequest,
-  applyVersionRecommendation,
-  buildAnalysisPrompt,
-  calculateNextVersion,
-  createChangelogEntry,
-  extractTextContent,
-  formatDate,
-  parseAnalysisResponse,
-  readPackageVersion,
-  resolveRepositoryFile,
-  upsertChangelogEntry
-};
