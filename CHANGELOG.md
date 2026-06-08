@@ -2,12 +2,12 @@
 
 ## 0.3.0 - 2026-06-08
 
-- Summary: Adds a standalone release action that automatically creates GitHub Releases from version files and CHANGELOG.md, supporting Node.js, Python, and Java ecosystems with auto-detection and idempotent execution.
-- Added new `release` action for automated GitHub Release creation with support for package.json, pyproject.toml, pom.xml, and gradle.properties
-- Refactored publish workflow to use the new release action instead of custom shell scripts
-- Added comprehensive test suite for version file detection and changelog extraction
-- Updated documentation with release action usage examples and multi-language support details
-
+- Summary: Added a new standalone create-release GitHub Action that automatically creates GitHub Releases from version files and changelog, supporting multiple ecosystems (Node.js, Python, Java). This is a new backwards-compatible capability alongside the existing semver analysis action.
+- Added `create-release` action for automated GitHub Release creation from version files and CHANGELOG.md
+- Implemented multi-language version file detection supporting package.json, pyproject.toml, pom.xml, and gradle.properties
+- Added idempotent release creation that safely skips when releases already exist
+- Updated publish workflow to use the new create-release action instead of manual shell scripting
+- Added comprehensive test coverage for version file detection and changelog extraction
 ## 0.2.1 - 2026-06-08
 
 - Summary: Fixed release workflow to automatically publish on version bumps and added comprehensive documentation comparing agentic-semver with alternative tools
