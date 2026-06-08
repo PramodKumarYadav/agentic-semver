@@ -14,10 +14,12 @@ inputs:
     description: Claude model used for the analysis request.
     required: false
     default: claude-sonnet-4-5
-  package-json-path:
-    description: Path to the package.json file that should be versioned.
+  version-file-path:
+    description: >
+      Path to the version file to update. Auto-detected when not specified.
+      Supported files: package.json, pyproject.toml, pom.xml, gradle.properties.
     required: false
-    default: package.json
+    default: ""
   changelog-path:
     description: Path to the changelog file that should be updated.
     required: false
@@ -50,7 +52,7 @@ outputs:
   current-version:
     description: Version found on the base branch.
   next-version:
-    description: Version written to package.json.
+    description: Version written to the version file.
   summary:
     description: Claude summary of the pull request changes.
   changelog-entry:
