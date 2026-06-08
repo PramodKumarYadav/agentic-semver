@@ -51,10 +51,25 @@ function extractTextContent(content) {
 
 function parseAnalysisResponse(responseText) {
   const trimmed = responseText.trim();
-  const fencedMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  const candidate = fencedMatch ? fencedMatch[1].trim() : trimmed;
-  const jsonMatch = candidate.match(/\{[\s\S]*\}/);
-  const payload = JSON.parse(jsonMatch ? jsonMatch[0] : candidate);
+  let candidate = trimmed;
+
+  if (candidate.startsWith('```')) {
+    const lines = candidate.split('\n');
+    const firstLine = lines[0].trim().toLowerCase();
+    const lastLine = lines[lines.length - 1].trim();
+
+    if ((firstLine === '```' || firstLine === '```json') && lastLine === '```') {
+      candidate = lines.slice(1, -1).join('\n').trim();
+    }
+  }
+
+  const firstBraceIndex = candidate.indexOf('{');
+  const lastBraceIndex = candidate.lastIndexOf('}');
+  if (firstBraceIndex !== -1 && lastBraceIndex > firstBraceIndex) {
+    candidate = candidate.slice(firstBraceIndex, lastBraceIndex + 1);
+  }
+
+  const payload = JSON.parse(candidate);
   const bump = String(payload.bump || '').toLowerCase();
 
   if (!SUPPORTED_BUMPS.has(bump)) {
