@@ -3,66 +3,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as core from '@actions/core';
 import * as github from '@actions/github';
+import { detectVersionFile, readVersionFromFile } from './index.js';
 
-// ──────────────────────────────────────────────────────────────────────
-// Version file detection & reading
-// ──────────────────────────────────────────────────────────────────────
-
-const VERSION_FILE_CANDIDATES = ['package.json', 'pyproject.toml', 'pom.xml', 'gradle.properties'];
-
-export function detectVersionFile(workdir: string = process.cwd()): string {
-  for (const candidate of VERSION_FILE_CANDIDATES) {
-    const full = path.join(workdir, candidate);
-    if (fs.existsSync(full)) {
-      return full;
-    }
-  }
-  throw new Error(
-    `Could not auto-detect a version file. ` +
-      `Checked: ${VERSION_FILE_CANDIDATES.join(', ')}. ` +
-      `Set the "version-file" input explicitly.`
-  );
-}
-
-export function readVersionFromFile(filePath: string): string {
-  const content = fs.readFileSync(filePath, 'utf8');
-  const basename = path.basename(filePath);
-
-  if (basename === 'package.json') {
-    const pkg = JSON.parse(content) as { version?: string };
-    if (!pkg.version) throw new Error(`No "version" field in ${filePath}`);
-    return pkg.version;
-  }
-
-  if (basename === 'pyproject.toml') {
-    // Scope the search to [project] or [tool.poetry] sections only.
-    // [^\[]*? matches any content (including newlines) up to the next table header,
-    // preventing false matches on version fields in unrelated tables.
-    const match = /^\[(project|tool\.poetry)\][^\[]*?^\s*version\s*=\s*["']([^"']+)["']/m.exec(content);
-    if (!match) throw new Error(`No version field found in ${filePath}`);
-    return match[2];
-  }
-
-  if (basename === 'pom.xml') {
-    // Strip <parent>...</parent> first so we don't pick up the parent version
-    // instead of the project's own version (common in Maven multi-module setups).
-    const withoutParent = content.replace(/<parent>[\s\S]*?<\/parent>/i, '');
-    const match = /<version>\s*([^<]+?)\s*<\/version>/.exec(withoutParent);
-    if (!match) throw new Error(`No <version> tag found in ${filePath}`);
-    return match[1];
-  }
-
-  if (basename === 'gradle.properties') {
-    const match = /^\s*version\s*=\s*(.+)/m.exec(content);
-    if (!match) throw new Error(`No version= line found in ${filePath}`);
-    return match[1].trim();
-  }
-
-  throw new Error(
-    `Unsupported version file: ${basename}. ` +
-      `Supported files: package.json, pyproject.toml, pom.xml, gradle.properties.`
-  );
-}
+// Re-export so tests and external consumers can import from either module.
+export { detectVersionFile, readVersionFromFile };
 
 // ──────────────────────────────────────────────────────────────────────
 // Changelog extraction
@@ -85,7 +29,7 @@ export function extractChangelogSection(changelogContent: string, version: strin
     }
 
     if (inSection) {
-      if (/^## /.test(line)) break; // Next version section — stop.
+      if (/^## /.test(line)) break;
       sectionLines.push(line);
     }
   }
