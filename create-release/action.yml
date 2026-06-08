@@ -14,7 +14,7 @@ inputs:
     description: Path to the CHANGELOG.md file used to extract release notes.
     required: false
     default: CHANGELOG.md
-  version-file:
+  version-file-path:
     description: >
       Path to the version file. Auto-detected when not specified.
       Supported files: package.json, pyproject.toml, pom.xml, gradle.properties.

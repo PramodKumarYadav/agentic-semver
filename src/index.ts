@@ -2,6 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import semver from 'semver';
 import type Anthropic from '@anthropic-ai/sdk';
+import { detectVersionFile, readVersionFromFile, writeVersionToFile, VERSION_FILE_CANDIDATES } from './version-files.js';
+import { writeChangelogEntry, upsertChangelogEntry } from './changelog.js';
+
+// Re-export so consumers only need to import from this one entry point.
+export { detectVersionFile, readVersionFromFile, writeVersionToFile, VERSION_FILE_CANDIDATES };
+export { upsertChangelogEntry };
 
 const SUPPORTED_BUMPS = new Set<string>(['patch', 'minor', 'major']);
 const MAX_PATCH_CHARACTERS = 4000;
@@ -174,74 +180,14 @@ export async function analyzePullRequest(params: AnalyzePullRequestParams): Prom
   return parseAnalysisResponse(extractTextContent(message.content as ContentBlock[]));
 }
 
-function readJsonFile(filePath: string): Record<string, unknown> {
-  return JSON.parse(fs.readFileSync(filePath, 'utf8')) as Record<string, unknown>;
-}
-
-function writeJsonFile(filePath: string, value: unknown): void {
-  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
-}
-
-export function readPackageVersion(packageJsonPath: string): string {
-  return String(readJsonFile(packageJsonPath).version);
-}
-
 function calculateNextVersion(currentVersion: string, bump: string): string {
   const nextVersion = semver.inc(currentVersion, bump as semver.ReleaseType);
-
-  if (!nextVersion) {
-    throw new Error(`Unable to calculate a ${bump} version from ${currentVersion}.`);
-  }
-
+  if (!nextVersion) throw new Error(`Unable to calculate a ${bump} version from ${currentVersion}.`);
   return nextVersion;
 }
 
-function formatDate(date = new Date()): string {
-  return date.toISOString().slice(0, 10);
-}
-
-interface CreateChangelogEntryParams {
-  version: string;
-  summary: string;
-  changelog: string[];
-  date?: string;
-}
-
-function createChangelogEntry({ version, summary, changelog, date = formatDate() }: CreateChangelogEntryParams): string {
-  return [
-    `## ${version} - ${date}`,
-    '',
-    `- Summary: ${summary}`,
-    ...changelog.map((item) => `- ${item}`),
-    ''
-  ].join('\n');
-}
-
-export function upsertChangelogEntry(existingContent: string, entry: string, version: string): string {
-  const heading = `## ${version} - `;
-  const normalizedEntry = entry.trimEnd();
-
-  if (!existingContent.trim()) {
-    return `# Changelog\n\n${normalizedEntry}\n`;
-  }
-
-  const header = existingContent.startsWith('# Changelog') ? '# Changelog\n\n' : '';
-  const body = existingContent.startsWith('# Changelog')
-    ? existingContent.replace(/^# Changelog\n\n?/, '')
-    : existingContent;
-
-  if (body.includes(heading)) {
-    const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const sectionPattern = new RegExp(`${escapedHeading}[\\s\\S]*?(?=\\n## |$)`);
-    const updatedBody = body.replace(sectionPattern, normalizedEntry);
-    return `${header}${updatedBody.trimEnd()}\n`;
-  }
-
-  return `${header}${normalizedEntry}\n\n${body.trimStart()}`;
-}
-
 export interface ApplyVersionRecommendationParams {
-  packageJsonPath: string;
+  versionFilePath: string;
   changelogPath: string;
   baseVersion: string;
   recommendation: AnalysisRecommendation;
@@ -249,42 +195,37 @@ export interface ApplyVersionRecommendationParams {
 }
 
 export function applyVersionRecommendation({
-  packageJsonPath,
+  versionFilePath,
   changelogPath,
   baseVersion,
   recommendation,
-  date = formatDate()
+  date
 }: ApplyVersionRecommendationParams): ApplyVersionResult {
-  const packageJson = readJsonFile(packageJsonPath);
   const nextVersion = calculateNextVersion(baseVersion, recommendation.bump);
-  packageJson.version = nextVersion;
-  writeJsonFile(packageJsonPath, packageJson);
 
-  const lockPath = path.join(path.dirname(packageJsonPath), 'package-lock.json');
-  if (fs.existsSync(lockPath)) {
-    const lock = readJsonFile(lockPath) as {
-      version: string;
-      packages?: Record<string, { version: string }>;
-    };
-    lock.version = nextVersion;
-    if (lock.packages?.['']) {
-      lock.packages[''].version = nextVersion;
+  writeVersionToFile(versionFilePath, nextVersion);
+
+  // Keep package-lock.json in sync for Node.js projects.
+  if (path.basename(versionFilePath) === 'package.json') {
+    const lockPath = path.join(path.dirname(versionFilePath), 'package-lock.json');
+    if (fs.existsSync(lockPath)) {
+      const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8')) as {
+        version: string;
+        packages?: Record<string, { version: string }>;
+      };
+      lock.version = nextVersion;
+      if (lock.packages?.['']) lock.packages[''].version = nextVersion;
+      fs.writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
     }
-    writeJsonFile(lockPath, lock);
   }
 
-  const existingChangelog = fs.existsSync(changelogPath)
-    ? fs.readFileSync(changelogPath, 'utf8')
-    : '';
-
-  const changelogEntry = createChangelogEntry({
-    version: nextVersion,
-    summary: recommendation.summary,
-    changelog: recommendation.changelog,
+  const changelogEntry = writeChangelogEntry(
+    changelogPath,
+    nextVersion,
+    recommendation.summary,
+    recommendation.changelog,
     date
-  });
-
-  fs.writeFileSync(changelogPath, upsertChangelogEntry(existingChangelog, changelogEntry, nextVersion));
+  );
 
   return { currentVersion: baseVersion, nextVersion, changelogEntry };
 }
