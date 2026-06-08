@@ -26,15 +26,15 @@ inputs:
   max-files:
     description: Maximum number of changed files to include in the Claude prompt.
     required: false
-    default: '40'
+    default: "40"
   commit-changes:
     description: Commit and push package.json and changelog updates back to the pull request branch.
     required: false
-    default: 'true'
+    default: "true"
   comment-summary:
     description: Post a pull request comment summarizing the recommended bump and changelog entry.
     required: false
-    default: 'false'
+    default: "false"
 outputs:
   skipped:
     description: Whether the action skipped processing.
