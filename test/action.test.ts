@@ -52,7 +52,7 @@ test('loadBaseVersion returns version from GitHub API', async () => {
     owner: 'owner',
     repo: 'repo',
     baseRef: 'main',
-    packageJsonPath: 'package.json',
+    versionFilePath: 'package.json',
     fallbackVersion: '0.0.0'
   });
   assert.equal(version, '2.0.0');
@@ -68,7 +68,7 @@ test('loadBaseVersion returns fallbackVersion when API returns 404', async () =>
     owner: 'owner',
     repo: 'repo',
     baseRef: 'main',
-    packageJsonPath: 'package.json',
+    versionFilePath: 'package.json',
     fallbackVersion: '1.2.3'
   });
   assert.equal(version, '1.2.3');
@@ -81,7 +81,7 @@ test('loadBaseVersion re-throws non-404 errors', async () => {
   });
 
   await assert.rejects(
-    () => loadBaseVersion(octokit, { owner: 'owner', repo: 'repo', baseRef: 'main', packageJsonPath: 'package.json', fallbackVersion: '0.0.0' }),
+    () => loadBaseVersion(octokit, { owner: 'owner', repo: 'repo', baseRef: 'main', versionFilePath: 'package.json', fallbackVersion: '0.0.0' }),
     /Server error/
   );
 });
@@ -93,7 +93,7 @@ test('loadBaseVersion returns fallbackVersion when response has no content field
     owner: 'owner',
     repo: 'repo',
     baseRef: 'main',
-    packageJsonPath: 'package.json',
+    versionFilePath: 'package.json',
     fallbackVersion: '3.0.0'
   });
   assert.equal(version, '3.0.0');
