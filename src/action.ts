@@ -148,7 +148,7 @@ export async function run(): Promise<void> {
   try {
     const githubToken = core.getInput('github-token', { required: true });
     const anthropicApiKey = core.getInput('anthropic-api-key', { required: true });
-    const model = core.getInput('model') || 'claude-3-5-sonnet-latest';
+    const model = core.getInput('model') || 'claude-sonnet-4-5';
     const packageJsonPath = (core.getInput('package-json-path') || 'package.json').replace(/^\.\//, '');
     const changelogPath = (core.getInput('changelog-path') || 'CHANGELOG.md').replace(/^\.\//, '');
     const targetBaseBranch = core.getInput('target-base-branch') || 'main';

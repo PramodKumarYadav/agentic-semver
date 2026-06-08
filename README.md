@@ -97,7 +97,7 @@ jobs:
 | --- | --- | --- |
 | `github-token` | none | Token used to fetch pull request metadata and push generated commits |
 | `anthropic-api-key` | none | API key used to call Claude |
-| `model` | `claude-3-5-sonnet-latest` | Claude model used for analysis |
+| `model` | `claude-sonnet-4-5` | Claude model used for analysis |
 | `package-json-path` | `package.json` | Manifest whose version will be updated |
 | `changelog-path` | `CHANGELOG.md` | Changelog file to update |
 | `target-base-branch` | `main` | Only PRs against this branch are processed |
@@ -118,7 +118,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const recommendation = await analyzePullRequest({
   anthropic,
-  model: 'claude-3-5-sonnet-latest',
+  model: 'claude-sonnet-4-5',
   repositoryFullName: 'owner/repo',
   baseRef: 'main',
   headRef: 'feature-branch',

@@ -10,7 +10,7 @@ inputs:
   model:
     description: Claude model used for the analysis request.
     required: false
-    default: claude-3-5-sonnet-latest
+    default: claude-sonnet-4-5
   package-json-path:
     description: Path to the package.json file that should be versioned.
     required: false
