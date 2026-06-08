@@ -15,7 +15,7 @@
 
 ### End-to-end release workflow
 
-```
+```ini
 PR opened / updated
         │
         ▼
