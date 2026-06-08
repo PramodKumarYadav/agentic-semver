@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0 - 2026-06-08
+
+- Summary: Added new opt-in capability to automatically apply semver labels (major, minor, or patch) to pull requests based on the recommended version bump.
+- Added `apply-label` input parameter (defaults to `true`) to control automatic PR labeling
+- Implemented `applyVersionLabel` function to create/update and apply color-coded semver labels to PRs
+- Added automatic cleanup of conflicting semver labels when applying a new version label
+- Added comprehensive test coverage for the new label application functionality
+
 ## 0.1.1 - 2026-06-08
 
 - Summary: Fix CI/CD pipeline configuration and migrate codebase to TypeScript
