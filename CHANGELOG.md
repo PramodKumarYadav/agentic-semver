@@ -2,11 +2,12 @@
 
 ## 1.0.0 - 2026-06-08
 
-- Summary: First stable release with breaking changes to input names and multi-language version file support. The action now auto-detects version files across Node.js, Python, Java, and Gradle projects, and renames package-json-path to version-file-path.
-- Breaking: Renamed input `package-json-path` to `version-file-path` for multi-language support
-- Added auto-detection and support for pyproject.toml, pom.xml, and gradle.properties version files
-- Refactored version file handling into dedicated `version-files.ts` and changelog logic into `changelog.ts` modules
-- Updated version from 0.3.0 to 1.0.0 marking first stable release
+- Summary: Breaking changes to input parameter names and multi-language version file support. Renamed `package-json-path` to `version-file-path` and `version-file` to `version-file-path` for consistency. Added automatic detection and support for Python (pyproject.toml), Java (pom.xml), and Gradle (gradle.properties) version files alongside Node.js (package.json). Refactored codebase with new modules for version file handling and changelog management.
+- Breaking: renamed action input `package-json-path` to `version-file-path` for consistency
+- Breaking: renamed create-release action input `version-file` to `version-file-path`
+- Added automatic version file detection supporting package.json, pyproject.toml, pom.xml, and gradle.properties
+- Extracted version file handling into dedicated `version-files.ts` module with extensible handler registry
+- Extracted changelog operations into dedicated `changelog.ts` module for improved maintainability
 ## 0.3.0 - 2026-06-08
 
 - Summary: Added a new standalone create-release GitHub Action that automatically creates GitHub Releases from version files and changelog, supporting multiple ecosystems (Node.js, Python, Java). This is a new backwards-compatible capability alongside the existing semver analysis action.
