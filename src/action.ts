@@ -129,8 +129,8 @@ interface OctokitWithIssues extends OctokitLike {
 
 const LABEL_COLORS: Record<string, string> = {
   major: 'e11d48',
-  minor: 'f97316',
-  patch: '3b82f6'
+  minor: '3b82f6',
+  patch: '22c55e'
 };
 
 const SEMVER_LABELS = new Set(Object.keys(LABEL_COLORS));
