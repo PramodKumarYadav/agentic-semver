@@ -127,6 +127,58 @@ interface OctokitWithIssues extends OctokitLike {
   };
 }
 
+const LABEL_COLORS: Record<string, string> = {
+  major: 'e11d48',
+  minor: 'f97316',
+  patch: '3b82f6'
+};
+
+const SEMVER_LABELS = new Set(Object.keys(LABEL_COLORS));
+
+interface OctokitWithLabels extends OctokitLike {
+  rest: OctokitLike['rest'] & {
+    issues: {
+      addLabels: (params: { owner: string; repo: string; issue_number: number; labels: string[] }) => Promise<void>;
+      removeLabel: (params: { owner: string; repo: string; issue_number: number; name: string }) => Promise<void>;
+      listLabelsOnIssue: (params: { owner: string; repo: string; issue_number: number }) => Promise<{ data: { name: string }[] }>;
+      createLabel: (params: { owner: string; repo: string; name: string; color: string; description: string }) => Promise<void>;
+      updateLabel: (params: { owner: string; repo: string; name: string; color: string; description: string }) => Promise<void>;
+    };
+  };
+}
+
+export async function applyVersionLabel(
+  octokit: OctokitWithLabels,
+  { owner, repo, issueNumber, bump }: { owner: string; repo: string; issueNumber: number; bump: string }
+): Promise<void> {
+  if (!SEMVER_LABELS.has(bump)) {
+    throw new Error(`Cannot apply label: "${bump}" is not a recognised semver bump type.`);
+  }
+
+  const color = LABEL_COLORS[bump];
+
+  // Ensure the label exists with the right colour — fall back to create only on 404.
+  try {
+    await octokit.rest.issues.updateLabel({ owner, repo, name: bump, color, description: `Semver ${bump} change` });
+  } catch (err) {
+    const status = (err as { status?: number }).status;
+    if (status !== 404) throw err;
+    await octokit.rest.issues.createLabel({ owner, repo, name: bump, color, description: `Semver ${bump} change` });
+  }
+
+  // Remove any other semver labels already on the PR.
+  const { data: currentLabels } = await octokit.rest.issues.listLabelsOnIssue({ owner, repo, issue_number: issueNumber });
+  for (const label of currentLabels) {
+    if (SEMVER_LABELS.has(label.name) && label.name !== bump) {
+      await octokit.rest.issues.removeLabel({ owner, repo, issue_number: issueNumber, name: label.name });
+    }
+  }
+
+  // Apply the new label.
+  await octokit.rest.issues.addLabels({ owner, repo, issue_number: issueNumber, labels: [bump] });
+  core.info(`Applied label "${bump}" to PR #${issueNumber}.`);
+}
+
 export async function postSummaryComment(
   octokit: OctokitWithIssues,
   { owner, repo, issueNumber, result, recommendation }: PostSummaryCommentParams
@@ -155,6 +207,7 @@ export async function run(): Promise<void> {
     const maxFiles = Number.parseInt(core.getInput('max-files') || '40', 10);
     const commitChanges = core.getBooleanInput('commit-changes');
     const commentSummary = core.getBooleanInput('comment-summary');
+    const applyLabel = core.getBooleanInput('apply-label');
 
     const pullRequest = github.context.payload.pull_request;
     if (!pullRequest) {
@@ -254,6 +307,23 @@ export async function run(): Promise<void> {
         result,
         recommendation
       });
+    }
+
+    if (applyLabel) {
+      if (isFork) {
+        core.warning('Skipping label application because the pull request comes from a fork.');
+      } else {
+        try {
+          await applyVersionLabel(octokit as unknown as OctokitWithLabels, {
+            owner,
+            repo,
+            issueNumber: pullRequest.number as number,
+            bump: recommendation.bump
+          });
+        } catch (labelErr) {
+          core.warning(`Failed to apply version label: ${labelErr instanceof Error ? labelErr.message : String(labelErr)}`);
+        }
+      }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
