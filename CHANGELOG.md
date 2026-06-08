@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1 - 2026-06-08
+
+- Summary: Fixed release workflow to automatically publish on version bumps and added comprehensive documentation comparing agentic-semver with alternative tools
+- Fixed publish workflow to run on every push to main and automatically create GitHub releases with changelog entries
+- Added check to prevent duplicate releases when version already exists
+- Added COMPARISON.md documenting differences between agentic-semver and semantic-release, release-please, and changesets
+- Added documentation for action outputs and multi-language usage examples
+- Enhanced publish workflow with build step, npm provenance, and improved error handling
 ## 0.2.0 - 2026-06-08
 
 - Summary: Added automatic version label application to pull requests, allowing the action to label PRs with 'major', 'minor', or 'patch' based on the recommended semantic version bump.
