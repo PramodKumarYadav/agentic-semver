@@ -23,19 +23,19 @@ agentic-semver.yml runs
   • Sends PR diff to Claude
   • Claude classifies bump (patch / minor / major)
   • Updates package.json and CHANGELOG.md
+  • Applies major / minor / patch label to the PR
   • Commits changes back to the PR branch
         │
         ▼
 PR reviewed and merged to main
         │
         ▼
-GitHub release published
-        │
-        ▼
-publish.yml runs
-  • Installs dependencies
-  • Runs tests
-  • Publishes package to npm
+publish.yml runs on every push to main
+  • Reads version from package.json
+  • Checks if a GitHub Release for that version already exists
+  • If not: builds, runs tests, creates GitHub Release with
+    changelog entry as release notes, publishes to npm
+  • If yes: skips (nothing to do — already released)
 ```
 
 ### Pull request automation
@@ -50,7 +50,7 @@ The workflow checks out the repository, installs dependencies with `npm ci`, and
 
 ### npm publishing
 
-The repository also includes `.github/workflows/publish.yml`, which publishes the package to npm whenever a GitHub release is published and `NPM_TOKEN` is configured.
+The repository also includes `.github/workflows/publish.yml`, which runs on every push to `main`. It reads the version from `package.json`, checks whether a GitHub Release for that version already exists, and if not: builds the project, runs tests, creates a GitHub Release (using the matching `CHANGELOG.md` entry as release notes), and publishes to npm. This means every merged PR that bumps the version is automatically released — no manual steps needed.
 
 Required secret:
 
