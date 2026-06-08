@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.2 - 2026-06-08
+
+- Summary: Renamed GitHub workflow from 'Publish npm package' to 'Create GitHub Release and Publish package to npm' for better clarity
+- Updated workflow name to better describe its dual purpose of creating GitHub releases and publishing to npm
+- Internal workflow naming improvement with no functional changes
+
 ## 1.0.1 - 2026-06-08
 
 - Summary: Updated README.md with improved documentation structure, badges, and clearer explanations of the agentic-semver workflow and features. No code changes or functionality modifications.
