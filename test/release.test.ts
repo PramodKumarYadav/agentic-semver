@@ -34,66 +34,102 @@ test('detectVersionFile throws when no supported file exists', () => {
 // ---------------------------------------------------------------------------
 
 test('readVersionFromFile reads package.json', () => {
-  const file = path.join(os.tmpdir(), 'package.json');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-test-'));
+  const file = path.join(dir, 'package.json');
   fs.writeFileSync(file, JSON.stringify({ name: 'my-pkg', version: '1.2.3' }));
   assert.equal(readVersionFromFile(file), '1.2.3');
-  fs.rmSync(file);
+  fs.rmSync(dir, { recursive: true });
 });
 
 test('readVersionFromFile throws when package.json has no version', () => {
-  const file = path.join(os.tmpdir(), 'package.json');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-test-'));
+  const file = path.join(dir, 'package.json');
   fs.writeFileSync(file, JSON.stringify({ name: 'my-pkg' }));
   assert.throws(() => readVersionFromFile(file), /No "version" field/);
-  fs.rmSync(file);
+  fs.rmSync(dir, { recursive: true });
 });
 
 test('readVersionFromFile reads pyproject.toml [project] version', () => {
-  const file = path.join(os.tmpdir(), 'pyproject.toml');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-test-'));
+  const file = path.join(dir, 'pyproject.toml');
   fs.writeFileSync(file, '[project]\nname = "my-app"\nversion = "3.1.0"\n');
   assert.equal(readVersionFromFile(file), '3.1.0');
-  fs.rmSync(file);
+  fs.rmSync(dir, { recursive: true });
 });
 
 test('readVersionFromFile reads pyproject.toml [tool.poetry] version', () => {
-  const file = path.join(os.tmpdir(), 'pyproject.toml');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-test-'));
+  const file = path.join(dir, 'pyproject.toml');
   fs.writeFileSync(file, '[tool.poetry]\nname = "my-app"\nversion = "4.0.0-alpha"\n');
   assert.equal(readVersionFromFile(file), '4.0.0-alpha');
-  fs.rmSync(file);
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('readVersionFromFile ignores version fields outside [project]/[tool.poetry] in pyproject.toml', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-test-'));
+  const file = path.join(dir, 'pyproject.toml');
+  // version in [build-system] should be ignored; version in [project] should be returned.
+  fs.writeFileSync(file, '[build-system]\nrequires = ["setuptools>=61"]\n[project]\nname = "my-app"\nversion = "5.0.0"\n');
+  assert.equal(readVersionFromFile(file), '5.0.0');
+  fs.rmSync(dir, { recursive: true });
 });
 
 test('readVersionFromFile throws when pyproject.toml has no version', () => {
-  const file = path.join(os.tmpdir(), 'pyproject.toml');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-test-'));
+  const file = path.join(dir, 'pyproject.toml');
   fs.writeFileSync(file, '[project]\nname = "my-app"\n');
   assert.throws(() => readVersionFromFile(file), /No version field found/);
-  fs.rmSync(file);
+  fs.rmSync(dir, { recursive: true });
 });
 
 test('readVersionFromFile reads pom.xml version', () => {
-  const file = path.join(os.tmpdir(), 'pom.xml');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-test-'));
+  const file = path.join(dir, 'pom.xml');
   fs.writeFileSync(file, '<project>\n  <groupId>com.example</groupId>\n  <version>2.5.0</version>\n</project>\n');
   assert.equal(readVersionFromFile(file), '2.5.0');
-  fs.rmSync(file);
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('readVersionFromFile reads project version when pom.xml has a <parent> block', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-test-'));
+  const file = path.join(dir, 'pom.xml');
+  const content = [
+    '<project>',
+    '  <parent>',
+    '    <groupId>org.springframework.boot</groupId>',
+    '    <version>3.2.0</version>',
+    '  </parent>',
+    '  <groupId>com.example</groupId>',
+    '  <version>2.5.0</version>',
+    '</project>'
+  ].join('\n');
+  fs.writeFileSync(file, content);
+  assert.equal(readVersionFromFile(file), '2.5.0');
+  fs.rmSync(dir, { recursive: true });
 });
 
 test('readVersionFromFile throws when pom.xml has no version', () => {
-  const file = path.join(os.tmpdir(), 'pom.xml');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-test-'));
+  const file = path.join(dir, 'pom.xml');
   fs.writeFileSync(file, '<project><groupId>com.example</groupId></project>\n');
   assert.throws(() => readVersionFromFile(file), /No <version> tag found/);
-  fs.rmSync(file);
+  fs.rmSync(dir, { recursive: true });
 });
 
 test('readVersionFromFile reads gradle.properties version', () => {
-  const file = path.join(os.tmpdir(), 'gradle.properties');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-test-'));
+  const file = path.join(dir, 'gradle.properties');
   fs.writeFileSync(file, 'group=com.example\nversion=1.0.5\n');
   assert.equal(readVersionFromFile(file), '1.0.5');
-  fs.rmSync(file);
+  fs.rmSync(dir, { recursive: true });
 });
 
 test('readVersionFromFile throws for unsupported file type', () => {
-  const file = path.join(os.tmpdir(), 'build.gradle');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-test-'));
+  const file = path.join(dir, 'build.gradle');
   fs.writeFileSync(file, "version = '1.0.0'\n");
   assert.throws(() => readVersionFromFile(file), /Unsupported version file/);
-  fs.rmSync(file);
+  fs.rmSync(dir, { recursive: true });
 });
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 # agentic-semver
 
-`agentic-semver` is a GitHub Action that uses Claude to inspect pull request changes, choose the right semantic version bump, update `package.json` and `CHANGELOG.md`, and automatically publish a release — with zero commit convention requirements.
+`agentic-semver` is a suite of GitHub Actions for AI-driven semantic versioning. The main action uses Claude to analyze pull request changes, recommend the right version bump, and update `package.json` and `CHANGELOG.md` — with zero commit convention requirements. A companion release action creates GitHub Releases automatically from your version file and changelog.
 
 ## What it does
 
@@ -146,9 +146,9 @@ For other ecosystems, set `commit-changes: false` and use the action outputs to 
 
 The `bump`, `next-version`, `summary`, and `changelog-entry` outputs are always available for you to wire into any toolchain.
 
-## Release action
+## Create-release action
 
-`agentic-semver` ships a second, standalone action at `PramodKumarYadav/agentic-semver/release` that creates GitHub Releases automatically — no shell scripting required.
+`agentic-semver` ships a companion action at `PramodKumarYadav/agentic-semver/create-release` that creates GitHub Releases automatically — no shell scripting required.
 
 It reads the version directly from your version file, extracts the matching section from `CHANGELOG.md`, and creates an idempotent GitHub Release. Running it twice for the same version is safe — it detects the existing release and skips.
 
@@ -171,7 +171,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: PramodKumarYadav/agentic-semver/release@v1
+      - uses: PramodKumarYadav/agentic-semver/create-release@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           # version-file: pyproject.toml   # optional — auto-detected by default
@@ -180,7 +180,7 @@ jobs:
 
 ```
 
-### Release action inputs
+### Create-release action inputs
 
 | Input | Default | Description |
 | --- | --- | --- |
@@ -191,7 +191,7 @@ jobs:
 | `draft` | `false` | Create the release as a draft |
 | `prerelease` | `false` | Mark the release as a pre-release |
 
-### Release action outputs
+### Create-release action outputs
 
 | Output | Description |
 | --- | --- |

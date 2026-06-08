@@ -35,15 +35,19 @@ export function readVersionFromFile(filePath: string): string {
   }
 
   if (basename === 'pyproject.toml') {
-    // Matches both [project] and [tool.poetry] version fields.
-    const match = /^\s*version\s*=\s*["']([^"']+)["']/m.exec(content);
+    // Scope the search to [project] or [tool.poetry] sections only.
+    // [^\[]*? matches any content (including newlines) up to the next table header,
+    // preventing false matches on version fields in unrelated tables.
+    const match = /^\[(project|tool\.poetry)\][^\[]*?^\s*version\s*=\s*["']([^"']+)["']/m.exec(content);
     if (!match) throw new Error(`No version field found in ${filePath}`);
-    return match[1];
+    return match[2];
   }
 
   if (basename === 'pom.xml') {
-    // First <version> tag — works for standard Maven single-module projects.
-    const match = /<version>\s*([^<]+?)\s*<\/version>/.exec(content);
+    // Strip <parent>...</parent> first so we don't pick up the parent version
+    // instead of the project's own version (common in Maven multi-module setups).
+    const withoutParent = content.replace(/<parent>[\s\S]*?<\/parent>/i, '');
+    const match = /<version>\s*([^<]+?)\s*<\/version>/.exec(withoutParent);
     if (!match) throw new Error(`No <version> tag found in ${filePath}`);
     return match[1];
   }
@@ -153,7 +157,9 @@ export async function runRelease(): Promise<void> {
       name: tag,
       body: releaseNotes,
       draft,
-      prerelease
+      prerelease,
+      // Pin the release to the exact commit that triggered this run.
+      target_commitish: github.context.sha
     });
 
     core.setOutput('released', 'true');

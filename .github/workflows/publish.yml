@@ -35,7 +35,7 @@ jobs:
 
       - name: Create GitHub release
         id: release
-        uses: ./release
+        uses: ./create-release
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
