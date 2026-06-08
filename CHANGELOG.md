@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 - 2026-06-08
+
+- Summary: Adds a standalone release action that automatically creates GitHub Releases from version files and CHANGELOG.md, supporting Node.js, Python, and Java ecosystems with auto-detection and idempotent execution.
+- Added new `release` action for automated GitHub Release creation with support for package.json, pyproject.toml, pom.xml, and gradle.properties
+- Refactored publish workflow to use the new release action instead of custom shell scripts
+- Added comprehensive test suite for version file detection and changelog extraction
+- Updated documentation with release action usage examples and multi-language support details
+
 ## 0.2.1 - 2026-06-08
 
 - Summary: Fixed release workflow to automatically publish on version bumps and added comprehensive documentation comparing agentic-semver with alternative tools

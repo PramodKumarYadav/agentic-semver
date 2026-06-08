@@ -33,43 +33,14 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Check if version already released
-        id: check
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          if gh release view "v$VERSION" &>/dev/null; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Extract changelog entry
-        id: meta
-        if: steps.check.outputs.exists == 'false'
-        run: |
-          VERSION="${{ steps.check.outputs.version }}"
-          NOTES=$(awk "/^## $VERSION /{found=1; next} found && /^## /{exit} found{print}" CHANGELOG.md)
-          if [ -z "$NOTES" ]; then
-            echo "::error::No changelog entry found for version $VERSION"
-            exit 1
-          fi
-          echo "$NOTES" > /tmp/release-notes.md
-
       - name: Create GitHub release
-        if: steps.check.outputs.exists == 'false'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release create "v${{ steps.check.outputs.version }}" \
-            --title "v${{ steps.check.outputs.version }}" \
-            --notes-file /tmp/release-notes.md \
-            --target main
+        id: release
+        uses: ./create-release
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish package to npm
-        if: steps.check.outputs.exists == 'false'
+        if: steps.release.outputs.released == 'true'
         run: npm publish --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
