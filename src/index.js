@@ -76,13 +76,15 @@ function parseAnalysisResponse(responseText) {
     throw new Error(`Claude returned an unsupported bump type: ${payload.bump}`);
   }
 
-  const summary = String(payload.summary || '').trim();
+  const summary = String(payload.summary || '').replace(/\s+/g, ' ').trim();
   if (!summary) {
     throw new Error('Claude response is missing a summary.');
   }
 
   const changelog = Array.isArray(payload.changelog)
-    ? payload.changelog.map((item) => String(item).trim()).filter(Boolean)
+    ? payload.changelog
+        .map((item) => String(item).replace(/\s+/g, ' ').trim())
+        .filter((item) => item && !/^#{1,6}\s/.test(item) && !/^```/.test(item))
     : [];
 
   if (changelog.length === 0) {
@@ -182,6 +184,16 @@ function applyVersionRecommendation({ packageJsonPath, changelogPath, baseVersio
   const nextVersion = calculateNextVersion(baseVersion, recommendation.bump);
   packageJson.version = nextVersion;
   writeJsonFile(packageJsonPath, packageJson);
+
+  const lockPath = path.join(path.dirname(packageJsonPath), 'package-lock.json');
+  if (fs.existsSync(lockPath)) {
+    const lock = readJsonFile(lockPath);
+    lock.version = nextVersion;
+    if (lock.packages && lock.packages['']) {
+      lock.packages[''].version = nextVersion;
+    }
+    writeJsonFile(lockPath, lock);
+  }
 
   const existingChangelog = fs.existsSync(changelogPath)
     ? fs.readFileSync(changelogPath, 'utf8')

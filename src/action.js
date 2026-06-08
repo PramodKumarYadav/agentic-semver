@@ -1,4 +1,6 @@
 const { execFileSync } = require('node:child_process');
+const fs = require('node:fs');
+const path = require('node:path');
 const core = require('@actions/core');
 const github = require('@actions/github');
 const Anthropic = require('@anthropic-ai/sdk');
@@ -46,13 +48,21 @@ function hasStagedChanges(files) {
     return false;
   }
 
-  return files.some((file) => changedFiles.split('\n').includes(file));
+  const staged = new Set(changedFiles.split('\n'));
+  return files.some((file) => staged.has(file.replace(/^\.\//, '')));
 }
 
 function commitAndPushChanges({ pullRequest, packageJsonPath, changelogPath, nextVersion }) {
   execFileSync('git', ['config', 'user.name', 'github-actions[bot]']);
   execFileSync('git', ['config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com']);
-  execFileSync('git', ['add', packageJsonPath, changelogPath]);
+  execFileSync('git', ['checkout', '-B', pullRequest.head.ref]);
+
+  const filesToStage = [packageJsonPath, changelogPath];
+  const lockPath = path.join(path.dirname(path.resolve(packageJsonPath)), 'package-lock.json');
+  if (fs.existsSync(lockPath)) {
+    filesToStage.push(lockPath);
+  }
+  execFileSync('git', ['add', ...filesToStage]);
 
   if (!hasStagedChanges([packageJsonPath, changelogPath])) {
     core.info('package.json and CHANGELOG.md are already up to date.');
@@ -88,8 +98,8 @@ async function run() {
     const githubToken = core.getInput('github-token', { required: true });
     const anthropicApiKey = core.getInput('anthropic-api-key', { required: true });
     const model = core.getInput('model') || 'claude-3-5-sonnet-latest';
-    const packageJsonPath = core.getInput('package-json-path') || 'package.json';
-    const changelogPath = core.getInput('changelog-path') || 'CHANGELOG.md';
+    const packageJsonPath = (core.getInput('package-json-path') || 'package.json').replace(/^\.\//, '');
+    const changelogPath = (core.getInput('changelog-path') || 'CHANGELOG.md').replace(/^\.\//, '');
     const targetBaseBranch = core.getInput('target-base-branch') || 'main';
     const maxFiles = Number.parseInt(core.getInput('max-files') || '40', 10);
     const commitChanges = core.getBooleanInput('commit-changes');
