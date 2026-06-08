@@ -1,66 +1,77 @@
 # agentic-semver
 
-`agentic-semver` is a suite of GitHub Actions for AI-driven semantic versioning. The main action uses Claude to analyze pull request changes, recommend the right version bump, and update `package.json` and `CHANGELOG.md` — with zero commit convention requirements. A companion release action creates GitHub Releases automatically from your version file and changelog.
+[![GitHub Marketplace](https://img.shields.io/badge/Marketplace-agentic--semver-purple?logo=github)](https://github.com/marketplace/actions/agentic-semver)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-## What it does
+AI-powered semantic versioning for GitHub pull requests. `agentic-semver` uses Claude to read your PR diff, classify the change as `patch`, `minor`, or `major`, and automatically update your version file and `CHANGELOG.md` — no commit message conventions required.
 
-- Reads the pull request diff targeting `main`
-- Sends the PR title, body, and changed file patches to Claude
-- Classifies the change as a `patch`, `minor`, or `major` release
-- Updates `package.json` with the next version derived from the base branch version
-- Upserts a new entry in `CHANGELOG.md`
-- Optionally commits the generated version files back to the pull request branch
+A companion action, `create-release`, creates GitHub Releases idempotently from your version file and changelog.
 
-See [COMPARISON.md](./COMPARISON.md) for a detailed comparison with `semantic-release`, `release-please`, and `changesets`.
+---
 
-## Repository workflows
+## Actions in this suite
 
-### End-to-end release workflow
+| Action | What it does |
+| --- | --- |
+| [`PramodKumarYadav/agentic-semver@v1`](#agentic-semver-action) | Runs on pull requests — classifies the bump, updates the version file and changelog, applies a PR label |
+| [`PramodKumarYadav/agentic-semver/create-release@v1`](#create-release-action) | Runs on push to `main` — reads the version file, extracts changelog notes, creates a GitHub Release |
+
+---
+
+## How it works
 
 ```ini
 PR opened / updated
         │
         ▼
-agentic-semver.yml runs
-  • Sends PR diff to Claude
-  • Claude classifies bump (patch / minor / major)
-  • Updates package.json and CHANGELOG.md
-  • Applies major / minor / patch label to the PR
-  • Commits changes back to the PR branch
+agentic-semver action runs
+  • Reads the PR diff (title, body, changed files)
+  • Sends the diff to Claude for analysis
+  • Claude recommends patch / minor / major
+  • Updates version file (package.json, pyproject.toml, pom.xml, …)
+  • Upserts a new section in CHANGELOG.md
+  • Applies a patch / minor / major label to the PR
+  • Commits the changes back to the PR branch
         │
         ▼
 PR reviewed and merged to main
         │
         ▼
-publish.yml runs on every push to main
-  • Reads version from package.json
-  • Checks if a GitHub Release for that version already exists
-  • If not: builds, runs tests, creates GitHub Release with
-    changelog entry as release notes, publishes to npm
-  • If yes: skips (nothing to do — already released)
+create-release action runs
+  • Reads the version from the version file
+  • Extracts the matching section from CHANGELOG.md
+  • Creates a GitHub Release with the changelog as release notes
+  • Skips if a release for this version already exists
 ```
 
-### Pull request automation
+---
 
-The repository includes `.github/workflows/agentic-semver.yml`, which runs on pull requests to `main` when `ANTHROPIC_API_KEY` is configured.
+## Prerequisites
 
-Required secret:
+- An __Anthropic API key__ with access to Claude. Store it as a repository secret named `ANTHROPIC_API_KEY`.
+- A repository with a supported version file at the root (or specify the path explicitly).
 
-- `ANTHROPIC_API_KEY`: Claude API key used to analyze the pull request
+### Supported version files
 
-The workflow checks out the repository, installs dependencies with `npm ci`, and runs the local action in `action.yml`.
+Auto-detected in this order when `version-file-path` is not set:
 
-### npm publishing
+| File | Ecosystem |
+| --- | --- |
+| `package.json` | Node.js |
+| `pyproject.toml` | Python (PEP 621 `[project]` or Poetry `[tool.poetry]`) |
+| `pom.xml` | Java / Maven |
+| `gradle.properties` | Java / Gradle |
 
-The repository also includes `.github/workflows/publish.yml`, which runs on every push to `main`. It reads the version from `package.json`, checks whether a GitHub Release for that version already exists, and if not: builds the project, runs tests, creates a GitHub Release (using the matching `CHANGELOG.md` entry as release notes), and publishes to npm. This means every merged PR that bumps the version is automatically released — no manual steps needed.
+---
 
-Required secret:
+## Quick start
 
-- `NPM_TOKEN`: npm automation token with permission to publish `@pramodyadav027/agentic-semver`
+Add both workflow files to your repository.
 
-## Using the action
+### 1. PR versioning workflow
 
 ```yaml
+# .github/workflows/agentic-semver.yml
 name: Agentic SemVer
 
 on:
@@ -69,9 +80,9 @@ on:
       - main
 
 permissions:
-  contents: write
-  pull-requests: write
-  issues: write  # required for apply-label
+  contents: write       # push version file + changelog commits
+  pull-requests: write  # post PR comments (when comment-summary: true)
+  issues: write         # apply major / minor / patch label
 
 jobs:
   version:
@@ -87,74 +98,10 @@ jobs:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
-## Action inputs
-
-| Input | Default | Description |
-| --- | --- | --- |
-| `github-token` | none | Token used to fetch pull request metadata and push generated commits |
-| `anthropic-api-key` | none | API key used to call Claude |
-| `model` | `claude-sonnet-4-5` | Claude model used for analysis |
-| `package-json-path` | `package.json` | Manifest whose version will be updated |
-| `changelog-path` | `CHANGELOG.md` | Changelog file to update |
-| `target-base-branch` | `main` | Only PRs against this branch are processed |
-| `max-files` | `40` | Max changed files included in the Claude prompt |
-| `commit-changes` | `true` | Commit `package.json` and `CHANGELOG.md` back to the PR branch |
-| `comment-summary` | `false` | Post a PR comment with the bump recommendation and changelog entry |
-| `apply-label` | `true` | Apply a `major`, `minor`, or `patch` label to the pull request |
-
-## Action outputs
-
-| Output | Description |
-| --- | --- |
-| `skipped` | `'true'` if the action skipped processing (draft PR, wrong base branch, no relevant files) |
-| `bump` | Recommended bump type: `patch`, `minor`, or `major` |
-| `current-version` | Version found on the base branch |
-| `next-version` | Version written to `package.json` |
-| `summary` | Claude's one-line summary of the pull request changes |
-| `changelog-entry` | Full markdown changelog entry generated for the release |
-
-## Using with other languages
-
-The AI diff analysis works on **any language** — Claude can classify Python, Go, Rust, Java, or any other code change equally well. Only the automatic version file write is Node.js-specific (`package.json`).
-
-For other ecosystems, set `commit-changes: false` and use the action outputs to update your own version file:
+### 2. Release workflow
 
 ```yaml
-- uses: PramodKumarYadav/agentic-semver@v1
-  id: semver
-  with:
-    github-token: ${{ secrets.GITHUB_TOKEN }}
-    anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-    commit-changes: false  # don't touch package.json
-
-# Example: update pyproject.toml for a Python project
-- if: steps.semver.outputs.skipped == 'false'
-  run: |
-    pip install tomli-w
-    python - <<'EOF'
-    import tomllib, tomli_w, pathlib
-    p = pathlib.Path('pyproject.toml')
-    data = tomllib.loads(p.read_text())
-    data['project']['version'] = '${{ steps.semver.outputs.next-version }}'
-    p.write_bytes(tomli_w.dumps(data))
-    EOF
-    git add pyproject.toml
-    git commit -m "chore: bump version to ${{ steps.semver.outputs.next-version }}"
-    git push
-
-```
-
-The `bump`, `next-version`, `summary`, and `changelog-entry` outputs are always available for you to wire into any toolchain.
-
-## Create-release action
-
-`agentic-semver` ships a companion action at `PramodKumarYadav/agentic-semver/create-release` that creates GitHub Releases automatically — no shell scripting required.
-
-It reads the version directly from your version file, extracts the matching section from `CHANGELOG.md`, and creates an idempotent GitHub Release. Running it twice for the same version is safe — it detects the existing release and skips.
-
-Supports **Node.js** (`package.json`), **Python** (`pyproject.toml`), and **Java** (`pom.xml`, `gradle.properties`) out of the box. The version file is auto-detected; no configuration needed for most projects.
-
-```yaml
+# .github/workflows/release.yml
 name: Release
 
 on:
@@ -163,7 +110,7 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: write  # create GitHub Releases and tags
 
 jobs:
   release:
@@ -174,27 +121,167 @@ jobs:
       - uses: PramodKumarYadav/agentic-semver/create-release@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          # version-file: pyproject.toml   # optional — auto-detected by default
-          # changelog-path: CHANGELOG.md   # optional — default: CHANGELOG.md
-          # tag-prefix: v                  # optional — default: v
-
 ```
 
-### Create-release action inputs
+That's it. Every merged PR that bumps the version triggers an automatic GitHub Release.
 
-| Input | Default | Description |
-| --- | --- | --- |
-| `github-token` | none | Token with `contents: write` permission to create releases |
-| `version-file` | auto-detected | Path to version file. Auto-detects `package.json`, `pyproject.toml`, `pom.xml`, `gradle.properties` |
-| `changelog-path` | `CHANGELOG.md` | Changelog file to extract release notes from |
-| `tag-prefix` | `v` | Prefix for the git tag (e.g. `v` → `v1.2.3`) |
-| `draft` | `false` | Create the release as a draft |
-| `prerelease` | `false` | Mark the release as a pre-release |
+---
 
-### Create-release action outputs
+## `agentic-semver` action
+
+Runs on pull requests. Analyzes the diff with Claude, updates the version file and changelog, and (optionally) labels the PR.
+
+### Inputs
+
+| Input | Required | Default | Description |
+| --- | --- | --- | --- |
+| `github-token` | **yes** | — | Token used to fetch PR metadata and push generated commits |
+| `anthropic-api-key` | **yes** | — | Anthropic API key used to call Claude |
+| `model` | no | `claude-sonnet-4-5` | Claude model to use for analysis |
+| `version-file-path` | no | auto-detected | Path to the version file to update. Auto-detects `package.json`, `pyproject.toml`, `pom.xml`, `gradle.properties` |
+| `changelog-path` | no | `CHANGELOG.md` | Path to the changelog file to update |
+| `target-base-branch` | no | `main` | Only process PRs targeting this branch |
+| `max-files` | no | `40` | Maximum number of changed files to include in the Claude prompt |
+| `commit-changes` | no | `true` | Commit the updated version file and changelog back to the PR branch |
+| `comment-summary` | no | `false` | Post a PR comment with the bump recommendation and changelog entry |
+| `apply-label` | no | `true` | Apply a `major`, `minor`, or `patch` label to the pull request |
+
+### Outputs
+
+| Output | Description |
+| --- | --- |
+| `skipped` | `'true'` if the action skipped processing (draft PR, wrong base branch, no relevant files) |
+| `bump` | Recommended bump type: `patch`, `minor`, or `major` |
+| `current-version` | Version found on the base branch before the bump |
+| `next-version` | Version written to the version file |
+| `summary` | Claude's one-line summary of the pull request changes |
+| `changelog-entry` | Full markdown changelog entry generated for the release |
+
+### Usage examples
+
+#### Python project (`pyproject.toml`)
+
+```yaml
+- uses: PramodKumarYadav/agentic-semver@v1
+  with:
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+    version-file-path: pyproject.toml
+```
+
+#### Java project (`pom.xml`)
+
+```yaml
+- uses: PramodKumarYadav/agentic-semver@v1
+  with:
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+    version-file-path: pom.xml
+```
+
+#### Use outputs in a downstream step
+
+```yaml
+- uses: PramodKumarYadav/agentic-semver@v1
+  id: semver
+  with:
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+- if: steps.semver.outputs.skipped == 'false'
+  run: echo "Bumping to ${{ steps.semver.outputs.next-version }} (${{ steps.semver.outputs.bump }})"
+```
+
+#### Post a PR comment with the changelog entry
+
+```yaml
+- uses: PramodKumarYadav/agentic-semver@v1
+  with:
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+    comment-summary: true
+```
+
+#### Skip auto-commit (read-only mode)
+
+```yaml
+- uses: PramodKumarYadav/agentic-semver@v1
+  id: semver
+  with:
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+    commit-changes: false
+
+# The bump, next-version, summary, and changelog-entry outputs are still available
+```
+
+---
+
+## `create-release` action
+
+Runs after a merge to `main`. Reads the version from your version file, extracts the matching section from `CHANGELOG.md`, and creates a GitHub Release. Safe to run on every push — it skips gracefully when a release for the current version already exists.
+
+### Inputs
+
+| Input | Required | Default | Description |
+| --- | --- | --- | --- |
+| `github-token` | **yes** | — | Token with `contents: write` permission to create releases and tags |
+| `version-file-path` | no | auto-detected | Path to the version file. Auto-detects `package.json`, `pyproject.toml`, `pom.xml`, `gradle.properties` |
+| `changelog-path` | no | `CHANGELOG.md` | Path to the changelog file to extract release notes from |
+| `tag-prefix` | no | `v` | Prefix applied to the version to form the git tag (e.g. `v` → `v1.2.3`) |
+| `draft` | no | `false` | Create the release as a draft |
+| `prerelease` | no | `false` | Mark the release as a pre-release |
+
+### Outputs
 
 | Output | Description |
 | --- | --- |
 | `version` | Version read from the version file (e.g. `1.2.3`) |
 | `tag` | Full tag name created or found (e.g. `v1.2.3`) |
 | `released` | `'true'` if a new release was created, `'false'` if it already existed |
+
+### Usage examples
+
+#### Gate a publish step on whether a new release was created
+
+```yaml
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: PramodKumarYadav/agentic-semver/create-release@v1
+        id: release
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - if: steps.release.outputs.released == 'true'
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+```
+
+#### Python project with explicit version file
+
+```yaml
+- uses: PramodKumarYadav/agentic-semver/create-release@v1
+  with:
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    version-file-path: pyproject.toml
+```
+
+#### Create a draft release for review before publishing
+
+```yaml
+- uses: PramodKumarYadav/agentic-semver/create-release@v1
+  with:
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    draft: true
+```
+
+---
+
+## Comparison with alternatives
+
+See [COMPARISON.md](./COMPARISON.md) for a detailed comparison with `semantic-release`, `release-please`, and `changesets`.

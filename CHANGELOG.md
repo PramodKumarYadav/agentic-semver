@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.1 - 2026-06-08
+
+- Summary: Updated README.md with improved documentation structure, badges, and clearer explanations of the agentic-semver workflow and features. No code changes or functionality modifications.
+- Added GitHub Marketplace and license badges to README
+- Reorganized documentation with clearer action comparison table and workflow diagrams
+- Enhanced getting started instructions and prerequisites section
+- Improved formatting and readability throughout documentation
+
 ## 1.0.0 - 2026-06-08
 
 - Summary: Breaking changes to input parameter names and multi-language version file support. Renamed `package-json-path` to `version-file-path` and `version-file` to `version-file-path` for consistency. Added automatic detection and support for Python (pyproject.toml), Java (pom.xml), and Gradle (gradle.properties) version files alongside Node.js (package.json). Refactored codebase with new modules for version file handling and changelog management.
