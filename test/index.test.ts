@@ -157,6 +157,64 @@ test('writeVersionToFile updates gradle.properties version', () => {
   fs.rmSync(dir, { recursive: true });
 });
 
+test('writeVersionToFile updates Cargo.toml version', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'semver-test-'));
+  const file = path.join(dir, 'Cargo.toml');
+  fs.writeFileSync(file, '[package]\nname = "my-crate"\nversion = "1.0.0"\nedition = "2021"\n');
+  writeVersionToFile(file, '2.0.0');
+  const content = fs.readFileSync(file, 'utf8');
+  assert.ok(content.includes('version = "2.0.0"'));
+  assert.ok(!content.includes('"1.0.0"'));
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('writeVersionToFile updates Cargo.toml version when [package] contains TOML arrays', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'semver-test-'));
+  const file = path.join(dir, 'Cargo.toml');
+  const content = '[package]\nname = "my-crate"\nkeywords = ["async", "runtime"]\nversion = "1.0.0"\n\n[dependencies]\nserde = { version = "1.0" }\n';
+  fs.writeFileSync(file, content);
+  writeVersionToFile(file, '2.0.0');
+  const updated = fs.readFileSync(file, 'utf8');
+  assert.ok(updated.includes('version = "2.0.0"'));
+  // Dependency version should be unchanged
+  assert.ok(updated.includes('serde = { version = "1.0" }'));
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('writeVersionToFile updates Chart.yaml version', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'semver-test-'));
+  const file = path.join(dir, 'Chart.yaml');
+  fs.writeFileSync(file, 'apiVersion: v2\nname: my-chart\nversion: 1.0.0\n');
+  writeVersionToFile(file, '2.0.0');
+  const content = fs.readFileSync(file, 'utf8');
+  assert.ok(content.includes('version: 2.0.0'));
+  assert.ok(!content.includes('version: 1.0.0'));
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('writeVersionToFile does not update indented version in Chart.yaml dependencies', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'semver-test-'));
+  const file = path.join(dir, 'Chart.yaml');
+  const content = 'apiVersion: v2\nname: my-chart\nversion: 1.0.0\ndependencies:\n  - name: redis\n    version: 17.0.0\n';
+  fs.writeFileSync(file, content);
+  writeVersionToFile(file, '2.0.0');
+  const updated = fs.readFileSync(file, 'utf8');
+  assert.ok(updated.includes('version: 2.0.0'));
+  // Dependency version (indented) must not be touched
+  assert.ok(updated.includes('    version: 17.0.0'));
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('writeVersionToFile updates composer.json version', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'semver-test-'));
+  const file = path.join(dir, 'composer.json');
+  fs.writeFileSync(file, JSON.stringify({ name: 'vendor/pkg', version: '1.0.0' }, null, 2) + '\n');
+  writeVersionToFile(file, '2.0.0');
+  const result = JSON.parse(fs.readFileSync(file, 'utf8')) as { version: string };
+  assert.equal(result.version, '2.0.0');
+  fs.rmSync(dir, { recursive: true });
+});
+
 test('writeVersionToFile throws for unsupported file type', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'semver-test-'));
   const file = path.join(dir, 'build.gradle');
