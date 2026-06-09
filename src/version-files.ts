@@ -101,13 +101,17 @@ const VERSION_FILE_HANDLERS: Record<string, VersionFileHandler> = {
     read(_filePath, content) {
       // Scope to [package] section only — avoids matching version fields inside
       // [dependencies], [dev-dependencies], etc.
-      const match = /^\[package\][^\[]*?^\s*version\s*=\s*["']([^"']+)["']/ms.exec(content);
+      // Use (?:(?!\n\[)[\s\S])*? instead of [^\[]* so that TOML arrays and
+      // inline tables (which can contain '[') inside [package] don't break the match.
+      // The negative lookahead stops only at a newline followed by '[', which
+      // marks the start of a new TOML section header.
+      const match = /^\[package\](?:(?!\n\[)[\s\S])*?^\s*version\s*=\s*["']([^"']+)["']/ms.exec(content);
       if (!match) throw new Error(`No version field found in [package] section of Cargo.toml`);
       return match[1];
     },
     write(filePath, content, version) {
       const updated = content.replace(
-        /(^\[package\][^\[]*?^\s*version\s*=\s*)["'][^"']+["']/ms,
+        /(^\[package\](?:(?!\n\[)[\s\S])*?^\s*version\s*=\s*)["'][^"']+["']/ms,
         (_, prefix) => `${prefix}"${version}"`
       );
       if (updated === content) throw new Error(`Could not update version in ${filePath}`);
@@ -117,12 +121,14 @@ const VERSION_FILE_HANDLERS: Record<string, VersionFileHandler> = {
 
   'Chart.yaml': {
     read(_filePath, content) {
-      const match = /^\s*version\s*:\s*(.+)/m.exec(content);
+      // Anchor to column 0 (no leading whitespace) to avoid matching a nested
+      // version: field under dependencies: or other indented blocks.
+      const match = /^version\s*:\s*(.+)/m.exec(content);
       if (!match) throw new Error(`No version field found in Chart.yaml`);
       return match[1].trim();
     },
     write(filePath, content, version) {
-      const updated = content.replace(/^(\s*version\s*:\s*).+/m, `$1${version}`);
+      const updated = content.replace(/^(version\s*:\s*).+/m, `$1${version}`);
       if (updated === content) throw new Error(`Could not update version in ${filePath}`);
       fs.writeFileSync(filePath, updated);
     }
