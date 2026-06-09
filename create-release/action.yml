@@ -1,7 +1,7 @@
 name: Agentic SemVer Release
 description: >
   Create a GitHub Release automatically from your version file and CHANGELOG.md.
-  Supports Node.js (package.json), Python (pyproject.toml), and Java (pom.xml / gradle.properties).
+  Supports Node.js (package.json), Python (pyproject.toml), Java (pom.xml / gradle.properties), Rust (Cargo.toml), Helm (Chart.yaml), and PHP (composer.json).
   Idempotent — skips gracefully when the release already exists.
 
 inputs:
@@ -17,7 +17,7 @@ inputs:
   version-file-path:
     description: >
       Path to the version file. Auto-detected when not specified.
-      Supported files: package.json, pyproject.toml, pom.xml, gradle.properties.
+      Supported files: package.json, pyproject.toml, pom.xml, gradle.properties, Cargo.toml, Chart.yaml, composer.json.
     required: false
     default: ""
   tag-prefix:

@@ -17,7 +17,7 @@ inputs:
   version-file-path:
     description: >
       Path to the version file to update. Auto-detected when not specified.
-      Supported files: package.json, pyproject.toml, pom.xml, gradle.properties.
+      Supported files: package.json, pyproject.toml, pom.xml, gradle.properties, Cargo.toml, Chart.yaml, composer.json.
     required: false
     default: ""
   changelog-path:
