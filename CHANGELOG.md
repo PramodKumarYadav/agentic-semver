@@ -2,12 +2,12 @@
 
 ## 1.1.0 - 2026-06-09
 
-- Summary: Adds support for three new project types: Rust (Cargo.toml), Helm (Chart.yaml), and PHP (composer.json). The action now auto-detects and updates version files for these languages in addition to the existing Node.js, Python, and Java support.
-- Added support for Rust projects with automatic version detection and updating in Cargo.toml files
-- Added support for Helm charts with automatic version detection and updating in Chart.yaml files
-- Added support for PHP projects with automatic version detection and updating in composer.json files
-- Updated documentation to reflect expanded multi-language capabilities across README, action definitions, and comparison guide
-
+- Summary: Added multi-language version file support for Rust (Cargo.toml), Helm (Chart.yaml), and PHP (composer.json), expanding compatibility beyond existing Node.js, Python, and Java support.
+- Added support for Rust projects via Cargo.toml version file detection and updates
+- Added support for Helm/Kubernetes charts via Chart.yaml version file detection and updates
+- Added support for PHP projects via composer.json version file detection and updates
+- Enhanced version file parsers to correctly handle nested version fields in dependencies sections
+- Updated documentation to reflect expanded multi-language capabilities
 ## 1.0.2 - 2026-06-08
 
 - Summary: Renamed GitHub workflow from 'Publish npm package' to 'Create GitHub Release and Publish package to npm' for better clarity
