@@ -95,6 +95,50 @@ const VERSION_FILE_HANDLERS: Record<string, VersionFileHandler> = {
       if (updated === content) throw new Error(`Could not update version in ${filePath}`);
       fs.writeFileSync(filePath, updated);
     }
+  },
+
+  'Cargo.toml': {
+    read(_filePath, content) {
+      // Scope to [package] section only — avoids matching version fields inside
+      // [dependencies], [dev-dependencies], etc.
+      const match = /^\[package\][^\[]*?^\s*version\s*=\s*["']([^"']+)["']/ms.exec(content);
+      if (!match) throw new Error(`No version field found in [package] section of Cargo.toml`);
+      return match[1];
+    },
+    write(filePath, content, version) {
+      const updated = content.replace(
+        /(^\[package\][^\[]*?^\s*version\s*=\s*)["'][^"']+["']/ms,
+        (_, prefix) => `${prefix}"${version}"`
+      );
+      if (updated === content) throw new Error(`Could not update version in ${filePath}`);
+      fs.writeFileSync(filePath, updated);
+    }
+  },
+
+  'Chart.yaml': {
+    read(_filePath, content) {
+      const match = /^\s*version\s*:\s*(.+)/m.exec(content);
+      if (!match) throw new Error(`No version field found in Chart.yaml`);
+      return match[1].trim();
+    },
+    write(filePath, content, version) {
+      const updated = content.replace(/^(\s*version\s*:\s*).+/m, `$1${version}`);
+      if (updated === content) throw new Error(`Could not update version in ${filePath}`);
+      fs.writeFileSync(filePath, updated);
+    }
+  },
+
+  'composer.json': {
+    read(_filePath, content) {
+      const pkg = JSON.parse(content) as { version?: string };
+      if (!pkg.version) throw new Error(`No "version" field in composer.json`);
+      return pkg.version;
+    },
+    write(filePath, _content, version) {
+      const pkg = readJsonFile(filePath);
+      pkg.version = version;
+      writeJsonFile(filePath, pkg);
+    }
   }
 };
 
