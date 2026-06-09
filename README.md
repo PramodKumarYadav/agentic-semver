@@ -61,6 +61,9 @@ Auto-detected in this order when `version-file-path` is not set:
 | `pyproject.toml` | Python (PEP 621 `[project]` or Poetry `[tool.poetry]`) |
 | `pom.xml` | Java / Maven |
 | `gradle.properties` | Java / Gradle |
+| `Cargo.toml` | Rust |
+| `Chart.yaml` | Helm / Kubernetes |
+| `composer.json` | PHP |
 
 ---
 
@@ -138,7 +141,7 @@ Runs on pull requests. Analyzes the diff with Claude, updates the version file a
 | `github-token` | **yes** | — | Token used to fetch PR metadata and push generated commits |
 | `anthropic-api-key` | **yes** | — | Anthropic API key used to call Claude |
 | `model` | no | `claude-sonnet-4-5` | Claude model to use for analysis |
-| `version-file-path` | no | auto-detected | Path to the version file to update. Auto-detects `package.json`, `pyproject.toml`, `pom.xml`, `gradle.properties` |
+| `version-file-path` | no | auto-detected | Path to the version file to update. Auto-detects `package.json`, `pyproject.toml`, `pom.xml`, `gradle.properties`, `Cargo.toml`, `Chart.yaml`, `composer.json` |
 | `changelog-path` | no | `CHANGELOG.md` | Path to the changelog file to update |
 | `target-base-branch` | no | `main` | Only process PRs targeting this branch |
 | `max-files` | no | `40` | Maximum number of changed files to include in the Claude prompt |
@@ -226,7 +229,7 @@ Runs after a merge to `main`. Reads the version from your version file, extracts
 | Input | Required | Default | Description |
 | --- | --- | --- | --- |
 | `github-token` | **yes** | — | Token with `contents: write` permission to create releases and tags |
-| `version-file-path` | no | auto-detected | Path to the version file. Auto-detects `package.json`, `pyproject.toml`, `pom.xml`, `gradle.properties` |
+| `version-file-path` | no | auto-detected | Path to the version file. Auto-detects `package.json`, `pyproject.toml`, `pom.xml`, `gradle.properties`, `Cargo.toml`, `Chart.yaml`, `composer.json` |
 | `changelog-path` | no | `CHANGELOG.md` | Path to the changelog file to extract release notes from |
 | `tag-prefix` | no | `v` | Prefix applied to the version to form the git tag (e.g. `v` → `v1.2.3`) |
 | `draft` | no | `false` | Create the release as a draft |

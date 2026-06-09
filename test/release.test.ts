@@ -124,6 +124,63 @@ test('readVersionFromFile reads gradle.properties version', () => {
   fs.rmSync(dir, { recursive: true });
 });
 
+test('readVersionFromFile reads Cargo.toml [package] version', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-test-'));
+  const file = path.join(dir, 'Cargo.toml');
+  fs.writeFileSync(file, '[package]\nname = "my-crate"\nversion = "0.3.1"\nedition = "2021"\n');
+  assert.equal(readVersionFromFile(file), '0.3.1');
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('readVersionFromFile ignores version fields outside [package] in Cargo.toml', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-test-'));
+  const file = path.join(dir, 'Cargo.toml');
+  const content = '[package]\nname = "my-crate"\nversion = "1.0.0"\n\n[dependencies]\nserde = { version = "1.0" }\n';
+  fs.writeFileSync(file, content);
+  assert.equal(readVersionFromFile(file), '1.0.0');
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('readVersionFromFile throws when Cargo.toml has no [package] version', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-test-'));
+  const file = path.join(dir, 'Cargo.toml');
+  fs.writeFileSync(file, '[package]\nname = "my-crate"\n');
+  assert.throws(() => readVersionFromFile(file), /No version field found in \[package\]/);
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('readVersionFromFile reads Chart.yaml version', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-test-'));
+  const file = path.join(dir, 'Chart.yaml');
+  fs.writeFileSync(file, 'apiVersion: v2\nname: my-chart\nversion: 2.1.0\n');
+  assert.equal(readVersionFromFile(file), '2.1.0');
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('readVersionFromFile throws when Chart.yaml has no version field', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-test-'));
+  const file = path.join(dir, 'Chart.yaml');
+  fs.writeFileSync(file, 'apiVersion: v2\nname: my-chart\n');
+  assert.throws(() => readVersionFromFile(file), /No version field found in Chart\.yaml/);
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('readVersionFromFile reads composer.json version', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-test-'));
+  const file = path.join(dir, 'composer.json');
+  fs.writeFileSync(file, JSON.stringify({ name: 'vendor/pkg', version: '1.4.2' }));
+  assert.equal(readVersionFromFile(file), '1.4.2');
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('readVersionFromFile throws when composer.json has no version', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-test-'));
+  const file = path.join(dir, 'composer.json');
+  fs.writeFileSync(file, JSON.stringify({ name: 'vendor/pkg' }));
+  assert.throws(() => readVersionFromFile(file), /No "version" field in composer\.json/);
+  fs.rmSync(dir, { recursive: true });
+});
+
 test('readVersionFromFile throws for unsupported file type', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-test-'));
   const file = path.join(dir, 'build.gradle');
