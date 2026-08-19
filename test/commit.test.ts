@@ -97,7 +97,7 @@ test('commitAndPushChanges commits onto the PR head, not the merge commit', () =
   }
 });
 
-test('commitAndPushChanges marks the bump commit [skip ci]', () => {
+test('commitAndPushChanges writes a plain bump subject with no CI-skip token', () => {
   const { root, origin, workspace } = setupMergeCheckout();
   const cwd = process.cwd();
 
@@ -113,7 +113,10 @@ test('commitAndPushChanges marks the bump commit [skip ci]', () => {
       nextVersion: '1.1.0'
     });
 
-    assert.equal(git(origin, 'log', '-1', '--format=%s', 'feature'), 'chore: bump version to 1.1.0 [skip ci]');
+    const subject = git(origin, 'log', '-1', '--format=%s', 'feature');
+    assert.equal(subject, 'chore: bump version to 1.1.0');
+    // A skip token here would suppress the run that reports required status checks.
+    assert.equal(/\[(skip ci|ci skip|skip actions|actions skip|no ci)\]/i.test(subject), false);
   } finally {
     process.chdir(cwd);
     fs.rmSync(root, { recursive: true, force: true });

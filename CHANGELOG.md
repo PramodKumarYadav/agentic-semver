@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.2 - 2026-08-19
+
+- Summary: Removes the [skip ci] token from bump commits and adds a loop guard to prevent infinite re-runs. This fixes a critical issue where the CI-skip token suppressed all workflows on the bump commit, preventing required status checks from running and potentially blocking PR merges.
+- Fixed infinite loop caused by changelog regeneration on re-runs by adding `isOwnBumpCommit` guard that recognizes the action's own commits
+- Removed `[skip ci]` token from bump commits to allow required status checks to run on pull requests
+- Added early exit in workflow when pull request head is the action's own bump commit, preventing unnecessary Claude API calls
+- Updated workflow path-ignore documentation to clarify it only filters whole-PR-diff matches, not individual commits
+
 ## 1.1.1 - 2026-08-19
 
 - Summary: Fixed critical packaging issue preventing the action from running when referenced via `uses: PramodKumarYadav/agentic-semver@v1`. The action manifests pointed to `dist/` which was gitignored and missing from all releases, causing 'File not found' errors for all external users. This patch bundles both entrypoints with @vercel/ncc into a committed `bundle/` directory, adds CI verification to prevent stale bundles, and implements automatic floating major version tag management.

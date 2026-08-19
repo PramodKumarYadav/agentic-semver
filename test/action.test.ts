@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { filterRelevantFiles, loadBaseVersion, applyVersionLabel } from '../src/action.js';
+import { filterRelevantFiles, loadBaseVersion, applyVersionLabel, isOwnBumpCommit } from '../src/action.js';
 
 // ---------------------------------------------------------------------------
 // filterRelevantFiles
@@ -177,4 +177,56 @@ test('applyVersionLabel throws when bump is not a recognised semver type', async
     () => applyVersionLabel(octokit, { owner: 'o', repo: 'r', issueNumber: 1, bump: 'invalid' }),
     /not a recognised semver bump type/
   );
+});
+
+const bumpCommit = (over: Record<string, unknown> = {}) => ({
+  commit: { message: 'chore: bump version to 1.2.3', author: { name: 'github-actions[bot]' } },
+  author: { login: 'github-actions[bot]' },
+  ...over
+});
+
+test('isOwnBumpCommit recognises the action\'s own bump commit', () => {
+  assert.equal(isOwnBumpCommit(bumpCommit()), true);
+});
+
+test('isOwnBumpCommit matches on committer name alone', () => {
+  assert.equal(isOwnBumpCommit(bumpCommit({ author: null })), true);
+});
+
+test('isOwnBumpCommit matches on actor login alone', () => {
+  assert.equal(
+    isOwnBumpCommit({
+      commit: { message: 'chore: bump version to 1.2.3', author: { name: 'Someone Else' } },
+      author: { login: 'github-actions[bot]' }
+    }),
+    true
+  );
+});
+
+test('isOwnBumpCommit ignores a human commit that mimics the subject', () => {
+  assert.equal(
+    isOwnBumpCommit({
+      commit: { message: 'chore: bump version to 1.2.3', author: { name: 'Pramod' } },
+      author: { login: 'PramodKumarYadav' }
+    }),
+    false
+  );
+});
+
+test('isOwnBumpCommit ignores an unrelated bot commit', () => {
+  assert.equal(isOwnBumpCommit(bumpCommit({ commit: { message: 'docs: tidy readme', author: { name: 'github-actions[bot]' } } })), false);
+});
+
+test('isOwnBumpCommit reads only the subject line, not the body', () => {
+  assert.equal(
+    isOwnBumpCommit({
+      commit: { message: 'feat: something\n\nchore: bump version to 1.2.3', author: { name: 'github-actions[bot]' } },
+      author: { login: 'github-actions[bot]' }
+    }),
+    false
+  );
+});
+
+test('isOwnBumpCommit tolerates a missing commit payload', () => {
+  assert.equal(isOwnBumpCommit({}), false);
 });
