@@ -9,8 +9,9 @@ on:
       - reopened
       - synchronize
       - ready_for_review
-    # The bump commit itself carries [skip ci], so it never reaches this filter.
-    # These stay as a backstop for anyone who edits only version metadata by hand.
+    # Version metadata alone is never worth an analysis run. Note this filter is
+    # evaluated against the whole pull request diff, so it only skips a PR that
+    # changes nothing else — the action's own loop guard handles the bump commit.
     paths-ignore:
       - package.json
       - package-lock.json

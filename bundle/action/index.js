@@ -43890,9 +43890,11 @@ var __webpack_exports__ = {};
 
 // EXPORTS
 __nccwpck_require__.d(__webpack_exports__, {
+  sP: () => (/* binding */ BUMP_COMMIT_PREFIX),
   DV: () => (/* binding */ applyVersionLabel),
   yr: () => (/* binding */ commitAndPushChanges),
   nH: () => (/* binding */ filterRelevantFiles),
+  oG: () => (/* binding */ isOwnBumpCommit),
   GC: () => (/* binding */ loadBaseVersion),
   S$: () => (/* binding */ postSummaryComment),
   eF: () => (/* binding */ run)
@@ -51588,6 +51590,24 @@ function hasStagedChanges(files) {
     const staged = new Set(changedFiles.split('\n'));
     return files.some((file) => staged.has(file.replace(/^\.\//, '')));
 }
+/** Subject line the action uses for its own version bump commits. */
+const BUMP_COMMIT_PREFIX = 'chore: bump version to ';
+const BOT_LOGIN = 'github-actions[bot]';
+/**
+ * True when a commit is one this action pushed itself.
+ *
+ * The bump commit becomes the pull request head, which fires another
+ * `synchronize` event. Without this check the next run would re-analyse the
+ * same diff and rewrite the changelog with freshly sampled text, which differs
+ * from the previous run and so produces yet another commit — a loop.
+ */
+function isOwnBumpCommit(commit) {
+    const subject = (commit.commit?.message ?? '').split('\n')[0].trim();
+    if (!subject.startsWith(BUMP_COMMIT_PREFIX)) {
+        return false;
+    }
+    return commit.commit?.author?.name === BOT_LOGIN || commit.author?.login === BOT_LOGIN;
+}
 function commitAndPushChanges({ pullRequest, versionFilePath, changelogPath, nextVersion }) {
     (0,external_node_child_process_.execFileSync)('git', ['config', 'user.name', 'github-actions[bot]']);
     (0,external_node_child_process_.execFileSync)('git', ['config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com']);
@@ -51611,9 +51631,7 @@ function commitAndPushChanges({ pullRequest, versionFilePath, changelogPath, nex
         info(`${external_node_path_default().basename(versionFilePath)} and ${external_node_path_default().basename(changelogPath)} are already up to date.`);
         return false;
     }
-    // [skip ci] keeps this machine-generated commit from re-triggering every workflow
-    // on the pull request. It carries no code, so there is nothing for CI to check.
-    (0,external_node_child_process_.execFileSync)('git', ['commit', '-m', `chore: bump version to ${nextVersion} [skip ci]`], { stdio: 'inherit' });
+    (0,external_node_child_process_.execFileSync)('git', ['commit', '-m', `${BUMP_COMMIT_PREFIX}${nextVersion}`], { stdio: 'inherit' });
     (0,external_node_child_process_.execFileSync)('git', ['push', 'origin', `HEAD:${pullRequest.head.ref}`], { stdio: 'inherit' });
     return true;
 }
@@ -51684,6 +51702,15 @@ async function run() {
         }
         const { owner, repo } = github_context.repo;
         const octokit = getOctokit(githubToken);
+        // Stop before spending an API call on Claude if the head is our own bump commit.
+        // That commit fired this run, and re-analysing it would rewrite the changelog with
+        // freshly sampled text, push again, and trigger the next run indefinitely.
+        const headCommit = await octokit.rest.repos.getCommit({ owner, repo, ref: String(pullRequest.head.sha) });
+        if (isOwnBumpCommit(headCommit.data)) {
+            info('Skipping analysis because the pull request head is this action\'s own version bump commit.');
+            setOutput('skipped', 'true');
+            return;
+        }
         // Resolve which version file to use. Explicit input beats auto-detect.
         const workdir = process.env.GITHUB_WORKSPACE ?? process.cwd();
         const resolvedVersionFile = versionFileInput
@@ -51805,10 +51832,12 @@ if (process.argv[1] === (0,external_node_url_.fileURLToPath)(import.meta.url)) {
     void run();
 }
 
+var __webpack_exports__BUMP_COMMIT_PREFIX = __webpack_exports__.sP;
 var __webpack_exports__applyVersionLabel = __webpack_exports__.DV;
 var __webpack_exports__commitAndPushChanges = __webpack_exports__.yr;
 var __webpack_exports__filterRelevantFiles = __webpack_exports__.nH;
+var __webpack_exports__isOwnBumpCommit = __webpack_exports__.oG;
 var __webpack_exports__loadBaseVersion = __webpack_exports__.GC;
 var __webpack_exports__postSummaryComment = __webpack_exports__.S$;
 var __webpack_exports__run = __webpack_exports__.eF;
-export { __webpack_exports__applyVersionLabel as applyVersionLabel, __webpack_exports__commitAndPushChanges as commitAndPushChanges, __webpack_exports__filterRelevantFiles as filterRelevantFiles, __webpack_exports__loadBaseVersion as loadBaseVersion, __webpack_exports__postSummaryComment as postSummaryComment, __webpack_exports__run as run };
+export { __webpack_exports__BUMP_COMMIT_PREFIX as BUMP_COMMIT_PREFIX, __webpack_exports__applyVersionLabel as applyVersionLabel, __webpack_exports__commitAndPushChanges as commitAndPushChanges, __webpack_exports__filterRelevantFiles as filterRelevantFiles, __webpack_exports__isOwnBumpCommit as isOwnBumpCommit, __webpack_exports__loadBaseVersion as loadBaseVersion, __webpack_exports__postSummaryComment as postSummaryComment, __webpack_exports__run as run };

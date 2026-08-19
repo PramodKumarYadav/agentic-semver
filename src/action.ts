@@ -93,6 +93,33 @@ function hasStagedChanges(files: string[]): boolean {
   return files.some((file) => staged.has(file.replace(/^\.\//, '')));
 }
 
+/** Subject line the action uses for its own version bump commits. */
+export const BUMP_COMMIT_PREFIX = 'chore: bump version to ';
+
+const BOT_LOGIN = 'github-actions[bot]';
+
+interface CommitLike {
+  commit?: { message?: string; author?: { name?: string } | null } | null;
+  author?: { login?: string } | null;
+}
+
+/**
+ * True when a commit is one this action pushed itself.
+ *
+ * The bump commit becomes the pull request head, which fires another
+ * `synchronize` event. Without this check the next run would re-analyse the
+ * same diff and rewrite the changelog with freshly sampled text, which differs
+ * from the previous run and so produces yet another commit — a loop.
+ */
+export function isOwnBumpCommit(commit: CommitLike): boolean {
+  const subject = (commit.commit?.message ?? '').split('\n')[0].trim();
+  if (!subject.startsWith(BUMP_COMMIT_PREFIX)) {
+    return false;
+  }
+
+  return commit.commit?.author?.name === BOT_LOGIN || commit.author?.login === BOT_LOGIN;
+}
+
 interface CommitAndPushParams {
   pullRequest: { head: { ref: string } };
   versionFilePath: string;
@@ -132,9 +159,7 @@ export function commitAndPushChanges({
     return false;
   }
 
-  // [skip ci] keeps this machine-generated commit from re-triggering every workflow
-  // on the pull request. It carries no code, so there is nothing for CI to check.
-  execFileSync('git', ['commit', '-m', `chore: bump version to ${nextVersion} [skip ci]`], { stdio: 'inherit' });
+  execFileSync('git', ['commit', '-m', `${BUMP_COMMIT_PREFIX}${nextVersion}`], { stdio: 'inherit' });
   execFileSync('git', ['push', 'origin', `HEAD:${pullRequest.head.ref}`], { stdio: 'inherit' });
   return true;
 }
@@ -250,6 +275,16 @@ export async function run(): Promise<void> {
 
     const { owner, repo } = github.context.repo;
     const octokit = github.getOctokit(githubToken);
+
+    // Stop before spending an API call on Claude if the head is our own bump commit.
+    // That commit fired this run, and re-analysing it would rewrite the changelog with
+    // freshly sampled text, push again, and trigger the next run indefinitely.
+    const headCommit = await octokit.rest.repos.getCommit({ owner, repo, ref: String(pullRequest.head.sha) });
+    if (isOwnBumpCommit(headCommit.data)) {
+      core.info('Skipping analysis because the pull request head is this action\'s own version bump commit.');
+      core.setOutput('skipped', 'true');
+      return;
+    }
 
     // Resolve which version file to use. Explicit input beats auto-detect.
     const workdir = process.env.GITHUB_WORKSPACE ?? process.cwd();
