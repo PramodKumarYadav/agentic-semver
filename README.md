@@ -34,6 +34,11 @@ agentic-semver action runs
   • Commits the changes back to the PR branch
         │
         ▼
+That commit re-triggers the workflow once
+  • The action recognises its own bump commit and stops
+  • No re-analysis, no second bump — it settles after one run
+        │
+        ▼
 PR reviewed and merged to main
         │
         ▼
@@ -50,6 +55,12 @@ create-release action runs
 
 - An __Anthropic API key__ with access to Claude. Store it as a repository secret named `ANTHROPIC_API_KEY`.
 - A repository with a supported version file at the root (or specify the path explicitly).
+- A __GitHub App__ installed on the repository, if you gate merges on required status
+  checks. The action pushes a version bump commit, and pushes made with `GITHUB_TOKEN`
+  do not start workflow runs — so that commit would become your pull request head with
+  no checks attached and GitHub would hold the merge. See
+  [Required status checks and the bump commit](#required-status-checks-and-the-bump-commit)
+  for the five-minute setup. Skip it if you do not use required checks.
 
 ### Supported version files
 
@@ -84,22 +95,37 @@ on:
 
 permissions:
   contents: write       # push version file + changelog commits
-  pull-requests: write  # post PR comments (when comment-summary: true)
+  pull-requests: write  # post PR comments (comment-summary is on by default)
   issues: write         # apply major / minor / patch label
 
 jobs:
   version:
     runs-on: ubuntu-latest
     steps:
+      # Pushes made with GITHUB_TOKEN do not start workflow runs, so the bump commit
+      # this action creates would leave your PR head with no status checks. An App
+      # token avoids that and keeps the commit attributed to an app, not a person.
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ secrets.SEMVER_APP_ID }}
+          private-key: ${{ secrets.SEMVER_APP_PRIVATE_KEY }}
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}   # this decides the push identity
 
       - uses: PramodKumarYadav/agentic-semver@v1
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ steps.app-token.outputs.token }}
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
+
+Not using required status checks? Then you do not need the app. Drop the
+`create-github-app-token` step and use `${{ secrets.GITHUB_TOKEN }}` for both the
+checkout `token:` and the action's `github-token:`. Everything works; the only
+difference is that the bump commit will not start a workflow run of its own.
 
 ### 2. Release workflow
 
