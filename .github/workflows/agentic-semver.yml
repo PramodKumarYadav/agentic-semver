@@ -9,8 +9,11 @@ on:
       - reopened
       - synchronize
       - ready_for_review
+    # The bump commit itself carries [skip ci], so it never reaches this filter.
+    # These stay as a backstop for anyone who edits only version metadata by hand.
     paths-ignore:
       - package.json
+      - package-lock.json
       - CHANGELOG.md
 
 permissions:

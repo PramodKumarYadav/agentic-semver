@@ -108,7 +108,14 @@ export function commitAndPushChanges({
 }: CommitAndPushParams): boolean {
   execFileSync('git', ['config', 'user.name', 'github-actions[bot]']);
   execFileSync('git', ['config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com']);
+
+  // For pull_request events actions/checkout materialises refs/pull/N/merge, so HEAD
+  // is main merged into the PR branch. Branching from it and pushing would land that
+  // merge commit on the contributor's branch. Re-point at the real head instead:
+  // --mixed resets the index to it while leaving the files we just generated in place.
+  execFileSync('git', ['fetch', '--no-tags', 'origin', pullRequest.head.ref]);
   execFileSync('git', ['checkout', '-B', pullRequest.head.ref]);
+  execFileSync('git', ['reset', '--mixed', 'FETCH_HEAD']);
 
   const filesToStage = [versionFilePath, changelogPath];
   // Keep package-lock.json in sync for Node.js projects.
@@ -125,7 +132,9 @@ export function commitAndPushChanges({
     return false;
   }
 
-  execFileSync('git', ['commit', '-m', `chore: bump version to ${nextVersion}`], { stdio: 'inherit' });
+  // [skip ci] keeps this machine-generated commit from re-triggering every workflow
+  // on the pull request. It carries no code, so there is nothing for CI to check.
+  execFileSync('git', ['commit', '-m', `chore: bump version to ${nextVersion} [skip ci]`], { stdio: 'inherit' });
   execFileSync('git', ['push', 'origin', `HEAD:${pullRequest.head.ref}`], { stdio: 'inherit' });
   return true;
 }
