@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { filterRelevantFiles, loadBaseVersion, applyVersionLabel, isOwnBumpCommit } from '../src/action.js';
+import { filterRelevantFiles, loadBaseVersion, applyVersionLabel, isOwnBumpCommit, buildIgnoredPaths } from '../src/action.js';
 
 // ---------------------------------------------------------------------------
 // filterRelevantFiles
@@ -229,4 +229,36 @@ test('isOwnBumpCommit reads only the subject line, not the body', () => {
 
 test('isOwnBumpCommit tolerates a missing commit payload', () => {
   assert.equal(isOwnBumpCommit({}), false);
+});
+
+test('buildIgnoredPaths excludes the lockfile alongside package.json', () => {
+  assert.deepEqual(
+    buildIgnoredPaths('/w', '/w/package.json', '/w/CHANGELOG.md'),
+    ['package.json', 'CHANGELOG.md', 'package-lock.json']
+  );
+});
+
+test('buildIgnoredPaths keeps the lockfile next to a nested version file', () => {
+  assert.deepEqual(
+    buildIgnoredPaths('/w', '/w/pkg/app/package.json', '/w/CHANGELOG.md'),
+    ['pkg/app/package.json', 'CHANGELOG.md', 'pkg/app/package-lock.json']
+  );
+});
+
+test('buildIgnoredPaths adds no lockfile for non-Node version files', () => {
+  assert.deepEqual(
+    buildIgnoredPaths('/w', '/w/pyproject.toml', '/w/CHANGELOG.md'),
+    ['pyproject.toml', 'CHANGELOG.md']
+  );
+});
+
+test('buildIgnoredPaths output is consumable by filterRelevantFiles', () => {
+  const ignored = buildIgnoredPaths('/w', '/w/package.json', '/w/CHANGELOG.md');
+  const files = [
+    { filename: 'src/index.ts', status: 'modified', additions: 1, deletions: 0, changes: 1 },
+    { filename: 'package.json', status: 'modified', additions: 1, deletions: 1, changes: 2 },
+    { filename: 'package-lock.json', status: 'modified', additions: 2, deletions: 2, changes: 4 },
+    { filename: 'CHANGELOG.md', status: 'modified', additions: 8, deletions: 0, changes: 8 }
+  ];
+  assert.deepEqual(filterRelevantFiles(files, ignored).map((f) => f.filename), ['src/index.ts']);
 });
