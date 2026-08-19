@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.2 - 2026-08-19
+
+- Summary: Added test execution step to the agentic-semver workflow to prevent version bumps when tests are failing. This is a maintenance improvement that fixes a race condition between CI and versioning workflows without changing any external behavior or API.
+- Fixed race condition where version could be bumped while tests were failing by running tests before the version bump step
+- Added `npm test` execution to agentic-semver workflow as a gate before semantic versioning step
+- Maintained separate CI and versioning workflows with deliberate test duplication for security and coverage reasons
+
 ## 1.2.1 - 2026-08-19
 
 - Summary: Documentation update to clarify GitHub App token usage in quick start examples and improve prerequisite explanations
