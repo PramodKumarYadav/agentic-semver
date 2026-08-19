@@ -43892,6 +43892,7 @@ var __webpack_exports__ = {};
 __nccwpck_require__.d(__webpack_exports__, {
   sP: () => (/* binding */ BUMP_COMMIT_PREFIX),
   DV: () => (/* binding */ applyVersionLabel),
+  ly: () => (/* binding */ buildIgnoredPaths),
   yr: () => (/* binding */ commitAndPushChanges),
   nH: () => (/* binding */ filterRelevantFiles),
   oG: () => (/* binding */ isOwnBumpCommit),
@@ -51578,6 +51579,23 @@ async function loadBaseVersion(octokit, { owner, repo, baseRef, versionFilePath,
         throw error;
     }
 }
+/**
+ * Paths to drop from the diff before asking Claude to classify it.
+ *
+ * These are all files this action writes itself, so feeding them back in would
+ * be scoring our own output as if it were user code. Returned relative to
+ * `workdir` to match the `filename` values GitHub reports for a pull request.
+ */
+function buildIgnoredPaths(workdir, versionFilePath, changelogPath) {
+    const ignored = [versionFilePath, changelogPath];
+    // applyVersionRecommendation keeps package-lock.json in step with package.json,
+    // so the lockfile diff is ours too — and a dependency-free version bump still
+    // shows up there as a change.
+    if (external_node_path_default().basename(versionFilePath) === 'package.json') {
+        ignored.push(external_node_path_default().join(external_node_path_default().dirname(versionFilePath), 'package-lock.json'));
+    }
+    return ignored.map((filePath) => external_node_path_default().relative(workdir, filePath));
+}
 function filterRelevantFiles(files, ignoredPaths) {
     const ignored = new Set(ignoredPaths.map((filePath) => filePath.replace(/^\.\//, '')));
     return files.filter((file) => !ignored.has(file.filename));
@@ -51592,7 +51610,7 @@ function hasStagedChanges(files) {
 }
 /** Subject line the action uses for its own version bump commits. */
 const BUMP_COMMIT_PREFIX = 'chore: bump version to ';
-const BOT_LOGIN = 'github-actions[bot]';
+const DEFAULT_BOT_LOGIN = 'github-actions[bot]';
 /**
  * True when a commit is one this action pushed itself.
  *
@@ -51600,13 +51618,22 @@ const BOT_LOGIN = 'github-actions[bot]';
  * `synchronize` event. Without this check the next run would re-analyse the
  * same diff and rewrite the changelog with freshly sampled text, which differs
  * from the previous run and so produces yet another commit — a loop.
+ *
+ * Identity is matched loosely on purpose. When the push is made with a GitHub
+ * App installation token the commit is attributed to that app's own bot account,
+ * so pinning to `github-actions[bot]` alone would stop recognising our own work
+ * and reopen the loop. Any `[bot]` actor carrying our exact subject prefix is
+ * treated as ours; the prefix is what makes that safe.
  */
 function isOwnBumpCommit(commit) {
     const subject = (commit.commit?.message ?? '').split('\n')[0].trim();
     if (!subject.startsWith(BUMP_COMMIT_PREFIX)) {
         return false;
     }
-    return commit.commit?.author?.name === BOT_LOGIN || commit.author?.login === BOT_LOGIN;
+    const login = commit.author?.login ?? '';
+    return (commit.commit?.author?.name === DEFAULT_BOT_LOGIN ||
+        login === DEFAULT_BOT_LOGIN ||
+        login.endsWith('[bot]'));
 }
 function commitAndPushChanges({ pullRequest, versionFilePath, changelogPath, nextVersion }) {
     (0,external_node_child_process_.execFileSync)('git', ['config', 'user.name', 'github-actions[bot]']);
@@ -51725,11 +51752,8 @@ async function run() {
             versionFilePath: external_node_path_default().relative(workdir, resolvedVersionFile),
             fallbackVersion: workspaceVersion
         });
-        // Ignore the version file and changelog from the diff — they're not user code.
-        // Both paths must be relative to workdir to match GitHub's file.filename values.
         const resolvedChangelogPath = external_node_path_default().resolve(workdir, changelogPath);
-        const filesToIgnore = [resolvedVersionFile, resolvedChangelogPath]
-            .map((f) => external_node_path_default().relative(workdir, f));
+        const filesToIgnore = buildIgnoredPaths(workdir, resolvedVersionFile, resolvedChangelogPath);
         const allFiles = await octokit.paginate(octokit.rest.pulls.listFiles, {
             owner,
             repo,
@@ -51834,10 +51858,11 @@ if (process.argv[1] === (0,external_node_url_.fileURLToPath)(import.meta.url)) {
 
 var __webpack_exports__BUMP_COMMIT_PREFIX = __webpack_exports__.sP;
 var __webpack_exports__applyVersionLabel = __webpack_exports__.DV;
+var __webpack_exports__buildIgnoredPaths = __webpack_exports__.ly;
 var __webpack_exports__commitAndPushChanges = __webpack_exports__.yr;
 var __webpack_exports__filterRelevantFiles = __webpack_exports__.nH;
 var __webpack_exports__isOwnBumpCommit = __webpack_exports__.oG;
 var __webpack_exports__loadBaseVersion = __webpack_exports__.GC;
 var __webpack_exports__postSummaryComment = __webpack_exports__.S$;
 var __webpack_exports__run = __webpack_exports__.eF;
-export { __webpack_exports__BUMP_COMMIT_PREFIX as BUMP_COMMIT_PREFIX, __webpack_exports__applyVersionLabel as applyVersionLabel, __webpack_exports__commitAndPushChanges as commitAndPushChanges, __webpack_exports__filterRelevantFiles as filterRelevantFiles, __webpack_exports__isOwnBumpCommit as isOwnBumpCommit, __webpack_exports__loadBaseVersion as loadBaseVersion, __webpack_exports__postSummaryComment as postSummaryComment, __webpack_exports__run as run };
+export { __webpack_exports__BUMP_COMMIT_PREFIX as BUMP_COMMIT_PREFIX, __webpack_exports__applyVersionLabel as applyVersionLabel, __webpack_exports__buildIgnoredPaths as buildIgnoredPaths, __webpack_exports__commitAndPushChanges as commitAndPushChanges, __webpack_exports__filterRelevantFiles as filterRelevantFiles, __webpack_exports__isOwnBumpCommit as isOwnBumpCommit, __webpack_exports__loadBaseVersion as loadBaseVersion, __webpack_exports__postSummaryComment as postSummaryComment, __webpack_exports__run as run };
