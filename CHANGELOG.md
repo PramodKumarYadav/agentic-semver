@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0 - 2026-08-19
+
+- Summary: Add GitHub App token support to unblock required status checks on bump commits
+- Mint a GitHub App installation token when configured to push bump commits, allowing workflow runs to execute on the bump commit and satisfy required status checks
+- Add `buildIgnoredPaths` to exclude `package-lock.json` and action-generated files from analysis input, preventing the action from scoring its own output
+- Broaden `isOwnBumpCommit` identity check to recognize any `[bot]` actor with the bump subject prefix, preventing re-analysis loops when using GitHub App tokens
+- Add fallback to `GITHUB_TOKEN` when GitHub App secrets are absent, maintaining backwards compatibility
+- Document GitHub App setup and token usage for required status check scenarios in README
+
 ## 1.1.2 - 2026-08-19
 
 - Summary: Removes the [skip ci] token from bump commits and adds a loop guard to prevent infinite re-runs. This fixes a critical issue where the CI-skip token suppressed all workflows on the bump commit, preventing required status checks from running and potentially blocking PR merges.
