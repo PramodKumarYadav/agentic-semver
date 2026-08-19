@@ -146,7 +146,7 @@ Runs on pull requests. Analyzes the diff with Claude, updates the version file a
 | `target-base-branch` | no | `main` | Only process PRs targeting this branch |
 | `max-files` | no | `40` | Maximum number of changed files to include in the Claude prompt |
 | `commit-changes` | no | `true` | Commit the updated version file and changelog back to the PR branch. The commit lands directly on the PR head, so no merge commit is dragged onto the branch. It does re-trigger your pull request workflows; the action recognises its own bump commit and skips re-analysis, so this settles after one run |
-| `comment-summary` | no | `false` | Post a PR comment with the bump recommendation and changelog entry |
+| `comment-summary` | no | `true` | Post a PR comment with the bump recommendation and changelog entry |
 | `apply-label` | no | `true` | Apply a `major`, `minor`, or `patch` label to the pull request |
 
 ### Outputs
