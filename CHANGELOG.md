@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.3 - 2026-08-19
+
+- Summary: Fixed bug where package-lock.json changes were incorrectly included in semantic version analysis, causing the action to score its own automated lockfile updates as if they were contributor changes.
+- Fixed package-lock.json being analyzed for semantic versioning when it should be ignored as action-generated content
+- Extracted file filtering logic into testable `buildIgnoredPaths` function with 4 new test cases
+- Ensured lockfile exclusion applies correctly for both root-level and nested package.json files
+- Prevented false version bump recommendations from automated lockfile synchronization changes
+
 ## 1.1.2 - 2026-08-19
 
 - Summary: Removes the [skip ci] token from bump commits and adds a loop guard to prevent infinite re-runs. This fixes a critical issue where the CI-skip token suppressed all workflows on the bump commit, preventing required status checks from running and potentially blocking PR merges.
