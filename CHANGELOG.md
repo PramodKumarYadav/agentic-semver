@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.1 - 2026-08-19
+
+- Summary: Fixed action packaging so GitHub Actions workflows can successfully use `@v1` references. The action was previously broken for all external consumers because bundled JavaScript files were gitignored and missing from the repository.
+- Fixed action execution by committing bundled JavaScript files to `bundle/` directory using `@vercel/ncc`
+- Added automated CI checks to prevent stale bundles and run tests on pull requests
+- Configured automatic `v1` tag movement in publish workflow to support major version references
+- Updated action manifests to point to committed bundle files instead of gitignored `dist/` directory
+
 ## 1.1.0 - 2026-06-09
 
 - Summary: Added multi-language version file support for Rust (Cargo.toml), Helm (Chart.yaml), and PHP (composer.json), expanding compatibility beyond existing Node.js, Python, and Java support.
