@@ -145,7 +145,7 @@ Runs on pull requests. Analyzes the diff with Claude, updates the version file a
 | `changelog-path` | no | `CHANGELOG.md` | Path to the changelog file to update |
 | `target-base-branch` | no | `main` | Only process PRs targeting this branch |
 | `max-files` | no | `40` | Maximum number of changed files to include in the Claude prompt |
-| `commit-changes` | no | `true` | Commit the updated version file and changelog back to the PR branch |
+| `commit-changes` | no | `true` | Commit the updated version file and changelog back to the PR branch. The commit is marked `[skip ci]` and is placed directly on the PR head, so it neither re-triggers your workflows nor drags a merge commit onto the branch |
 | `comment-summary` | no | `false` | Post a PR comment with the bump recommendation and changelog entry |
 | `apply-label` | no | `true` | Apply a `major`, `minor`, or `patch` label to the pull request |
 
@@ -288,3 +288,22 @@ jobs:
 ## Comparison with alternatives
 
 See [COMPARISON.md](./COMPARISON.md) for a detailed comparison with `semantic-release`, `release-please`, and `changesets`.
+
+---
+
+## Development
+
+```bash
+npm ci
+npm run build   # tsc -> dist/ (npm package), ncc -> bundle/ (action bundles)
+npm test
+```
+
+`bundle/` is committed on purpose. GitHub Actions runs `bundle/action/index.js` and
+`bundle/release/index.js` directly from the checked-out repository — it never runs a
+build step and never installs dependencies — so the bundles must be in git for
+`uses: PramodKumarYadav/agentic-semver@v1` to work at all. `dist/` stays gitignored
+because it only serves npm consumers, who install dependencies normally.
+
+**Any change under `src/` requires running `npm run build` and committing the
+resulting `bundle/` diff.** CI fails the pull request otherwise.

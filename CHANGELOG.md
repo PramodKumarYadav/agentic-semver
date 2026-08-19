@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.1 - 2026-08-19
+
+- Summary: Fixed critical packaging issue preventing the action from running when referenced via `uses: PramodKumarYadav/agentic-semver@v1`. The action manifests pointed to `dist/` which was gitignored and missing from all releases, causing 'File not found' errors for all external users. This patch bundles both entrypoints with @vercel/ncc into a committed `bundle/` directory, adds CI verification to prevent stale bundles, and implements automatic floating major version tag management.
+- Fixed action packaging: bundle JavaScript with all dependencies into committed `bundle/` directory so GitHub Actions can run the action without a build step
+- Added CI workflow to verify committed bundles stay in sync with source code and run tests on pull requests
+- Added automatic floating major version tag (`v1`) management in publish workflow to keep README examples working
+- Fixed commit strategy to place version bumps directly on PR head branch instead of merge commit, preventing unrelated changes from reaching contributor branches
+- Changed default for `comment-summary` input from `false` to `true` to improve user visibility of version recommendations
 ## 1.1.0 - 2026-06-09
 
 - Summary: Added multi-language version file support for Rust (Cargo.toml), Helm (Chart.yaml), and PHP (composer.json), expanding compatibility beyond existing Node.js, Python, and Java support.

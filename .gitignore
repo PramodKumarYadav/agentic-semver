@@ -1,3 +1,7 @@
 node_modules/
-dist/
 .env
+
+# tsc output for the npm package (shipped via the "files" field, never committed).
+# The action bundles under bundle/ ARE committed — GitHub Actions runs them
+# straight from the checked-out repo and never installs dependencies.
+dist/
