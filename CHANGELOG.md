@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.3 - 2026-08-19
+
+- Summary: Corrected documentation for comment-summary input default value from false to true, matching the actual implementation in action.yml
+- Fixed README documentation to show correct default value `true` for `comment-summary` input
+- Aligned documentation with implementation that has defaulted to `true` since commit c48bf19
+
 ## 1.1.2 - 2026-08-19
 
 - Summary: Removes the [skip ci] token from bump commits and adds a loop guard to prevent infinite re-runs. This fixes a critical issue where the CI-skip token suppressed all workflows on the bump commit, preventing required status checks from running and potentially blocking PR merges.
