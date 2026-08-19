@@ -68,6 +68,13 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Gate the bump on the tests. Without this the two workflows race, and a pull
+      # request with failing tests still gets a version bump and a changelog entry.
+      # ci.yml still owns the full check — it also covers draft pull requests, pushes
+      # to main, and metadata-only pull requests that this workflow filters out.
+      - name: Run tests
+        run: npm test
+
       - name: Recommend and apply semantic version
         uses: ./
         with:
