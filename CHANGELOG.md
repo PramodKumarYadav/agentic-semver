@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.1 - 2026-08-19
+
+- Summary: Documentation update to clarify GitHub App token usage in quick start examples and improve prerequisite explanations
+- Updated quick start example to use GitHub App token instead of GITHUB_TOKEN to ensure bump commits trigger status checks
+- Added explanation that pushes with GITHUB_TOKEN do not start workflow runs, which blocks PRs with required status checks
+- Clarified that GitHub App setup is conditional and only needed when using required status checks
+- Updated workflow diagram to show bump commit re-triggers workflow and the guard that prevents infinite loops
+- Fixed permissions comment to reflect that comment-summary defaults to true
+
 ## 1.2.0 - 2026-08-19
 
 - Summary: Add GitHub App token support to enable workflow runs on bump commits and prevent merge gate blocks on required status checks
