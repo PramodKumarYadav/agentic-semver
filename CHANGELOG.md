@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.2 - 2026-08-19
+
+- Summary: Documentation-only update explaining the bump commit's CI suppression behavior and implications for required status checks
+- Document that bump commits suppress workflow runs using GitHub's skip-ci token
+- Explain that bump commits report no status checks and how this affects merge requirements
+- Add warning about the skip-ci token substring trap in commit messages
+
 ## 1.1.1 - 2026-08-19
 
 - Summary: Fixed critical packaging issue preventing the action from running when referenced via `uses: PramodKumarYadav/agentic-semver@v1`. The action manifests pointed to `dist/` which was gitignored and missing from all releases, causing 'File not found' errors for all external users. This patch bundles both entrypoints with @vercel/ncc into a committed `bundle/` directory, adds CI verification to prevent stale bundles, and implements automatic floating major version tag management.
