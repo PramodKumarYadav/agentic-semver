@@ -160,6 +160,27 @@ Runs on pull requests. Analyzes the diff with Claude, updates the version file a
 | `summary` | Claude's one-line summary of the pull request changes |
 | `changelog-entry` | Full markdown changelog entry generated for the release |
 
+### About the bump commit
+
+When `commit-changes` is enabled (the default), the action pushes a commit like
+`chore: bump version to 1.2.0` to the pull request branch. Two things about that commit
+are worth knowing:
+
+**It carries GitHub's skip-ci token**, so it does not re-trigger your workflows. Without
+it, every bump would fire a `synchronize` event and re-run the whole pipeline for a commit
+that contains no code.
+
+**It therefore reports no status checks.** If you gate merges on required status checks,
+the bump commit becomes the pull request head with no check results attached, and GitHub
+will hold the merge. A companion no-op workflow does not help here — the token suppresses
+every workflow for that commit, not just one. If you use required checks, either set
+`commit-changes: false` and bump at release time, or exclude the gating check from the
+required list.
+
+> **Careful when writing about this.** GitHub matches the token anywhere in a commit
+> message, including the body and inside backticks. Mentioning it literally in your own
+> commit message will silently skip CI for that commit.
+
 ### Usage examples
 
 #### Python project (`pyproject.toml`)
