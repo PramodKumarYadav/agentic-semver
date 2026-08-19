@@ -138,7 +138,7 @@ Runs on pull requests. Analyzes the diff with Claude, updates the version file a
 
 | Input | Required | Default | Description |
 | --- | --- | --- | --- |
-| `github-token` | **yes** | — | Token used to fetch PR metadata and push generated commits |
+| `github-token` | **yes** | — | Token used to fetch PR metadata and push generated commits. `secrets.GITHUB_TOKEN` is fine unless you need the bump commit to start workflow runs — see [Required status checks and the bump commit](#required-status-checks-and-the-bump-commit) |
 | `anthropic-api-key` | **yes** | — | Anthropic API key used to call Claude |
 | `model` | no | `claude-sonnet-4-5` | Claude model to use for analysis |
 | `version-file-path` | no | auto-detected | Path to the version file to update. Auto-detects `package.json`, `pyproject.toml`, `pom.xml`, `gradle.properties`, `Cargo.toml`, `Chart.yaml`, `composer.json` |
@@ -146,7 +146,7 @@ Runs on pull requests. Analyzes the diff with Claude, updates the version file a
 | `target-base-branch` | no | `main` | Only process PRs targeting this branch |
 | `max-files` | no | `40` | Maximum number of changed files to include in the Claude prompt |
 | `commit-changes` | no | `true` | Commit the updated version file and changelog back to the PR branch. The commit lands directly on the PR head, so no merge commit is dragged onto the branch. It does re-trigger your pull request workflows; the action recognises its own bump commit and skips re-analysis, so this settles after one run |
-| `comment-summary` | no | `false` | Post a PR comment with the bump recommendation and changelog entry |
+| `comment-summary` | no | `true` | Post a PR comment with the bump recommendation and changelog entry |
 | `apply-label` | no | `true` | Apply a `major`, `minor`, or `patch` label to the pull request |
 
 ### Outputs
@@ -159,6 +159,60 @@ Runs on pull requests. Analyzes the diff with Claude, updates the version file a
 | `next-version` | Version written to the version file |
 | `summary` | Claude's one-line summary of the pull request changes |
 | `changelog-entry` | Full markdown changelog entry generated for the release |
+
+### Required status checks and the bump commit
+
+With `commit-changes` enabled (the default), the action pushes a commit like
+`chore: bump version to 1.2.0` to the pull request branch. That commit becomes the
+pull request head, and **GitHub does not start workflow runs for pushes made with
+`GITHUB_TOKEN`** — it blocks that deliberately, so a workflow cannot re-trigger itself.
+
+For most repositories that is harmless, and arguably what you want: the bump commit
+contains no code, so there is nothing to test. It matters in one case. If you gate
+merges on **required status checks**, the head commit ends up with no check results
+attached and GitHub holds the merge until someone approves or re-runs the workflow
+by hand, on every pull request.
+
+The fix is to push with a credential that is not `GITHUB_TOKEN`. A **GitHub App
+installation token** is the option that does not tie commits to an individual:
+
+1. Create a GitHub App under your account or organisation with repository permissions
+   `contents: write`, `pull requests: write`, and `issues: write`, then install it on
+   the repository.
+2. Store the App ID and the private key as repository secrets — the example below
+   expects them as `SEMVER_APP_ID` and `SEMVER_APP_PRIVATE_KEY`. Pipe the key file in
+   rather than pasting it, so the `BEGIN`/`END` lines and newlines survive:
+   `gh secret set SEMVER_APP_PRIVATE_KEY < your-app.private-key.pem`.
+3. Mint a token in the workflow and hand it to **both** `actions/checkout` and this
+   action:
+
+```yaml
+- uses: actions/create-github-app-token@v2
+  id: app-token
+  with:
+    app-id: ${{ secrets.SEMVER_APP_ID }}
+    private-key: ${{ secrets.SEMVER_APP_PRIVATE_KEY }}
+
+- uses: actions/checkout@v4
+  with:
+    fetch-depth: 0
+    token: ${{ steps.app-token.outputs.token }}   # this one decides the push identity
+
+- uses: PramodKumarYadav/agentic-semver@v1
+  with:
+    github-token: ${{ steps.app-token.outputs.token }}
+    anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+Passing the token to the action alone is not enough — the push uses whatever
+credentials `actions/checkout` persisted, so the `token:` on the checkout step is
+what actually changes the behaviour.
+
+A personal access token works too, but it belongs to one person, it expires, and the
+bump commits are attributed to them. The app avoids all three.
+
+Once the bump commit does start runs, the action recognises its own commit and skips
+re-analysis, so it settles after one extra run rather than looping.
 
 ### Usage examples
 

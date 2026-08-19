@@ -78,6 +78,26 @@ export async function loadBaseVersion(
   }
 }
 
+/**
+ * Paths to drop from the diff before asking Claude to classify it.
+ *
+ * These are all files this action writes itself, so feeding them back in would
+ * be scoring our own output as if it were user code. Returned relative to
+ * `workdir` to match the `filename` values GitHub reports for a pull request.
+ */
+export function buildIgnoredPaths(workdir: string, versionFilePath: string, changelogPath: string): string[] {
+  const ignored = [versionFilePath, changelogPath];
+
+  // applyVersionRecommendation keeps package-lock.json in step with package.json,
+  // so the lockfile diff is ours too — and a dependency-free version bump still
+  // shows up there as a change.
+  if (path.basename(versionFilePath) === 'package.json') {
+    ignored.push(path.join(path.dirname(versionFilePath), 'package-lock.json'));
+  }
+
+  return ignored.map((filePath) => path.relative(workdir, filePath));
+}
+
 export function filterRelevantFiles(files: ChangedFile[], ignoredPaths: string[]): ChangedFile[] {
   const ignored = new Set(ignoredPaths.map((filePath) => filePath.replace(/^\.\//, '')));
   return files.filter((file) => !ignored.has(file.filename));
@@ -96,7 +116,7 @@ function hasStagedChanges(files: string[]): boolean {
 /** Subject line the action uses for its own version bump commits. */
 export const BUMP_COMMIT_PREFIX = 'chore: bump version to ';
 
-const BOT_LOGIN = 'github-actions[bot]';
+const DEFAULT_BOT_LOGIN = 'github-actions[bot]';
 
 interface CommitLike {
   commit?: { message?: string; author?: { name?: string } | null } | null;
@@ -110,6 +130,12 @@ interface CommitLike {
  * `synchronize` event. Without this check the next run would re-analyse the
  * same diff and rewrite the changelog with freshly sampled text, which differs
  * from the previous run and so produces yet another commit — a loop.
+ *
+ * Identity is matched loosely on purpose. When the push is made with a GitHub
+ * App installation token the commit is attributed to that app's own bot account,
+ * so pinning to `github-actions[bot]` alone would stop recognising our own work
+ * and reopen the loop. Any `[bot]` actor carrying our exact subject prefix is
+ * treated as ours; the prefix is what makes that safe.
  */
 export function isOwnBumpCommit(commit: CommitLike): boolean {
   const subject = (commit.commit?.message ?? '').split('\n')[0].trim();
@@ -117,7 +143,12 @@ export function isOwnBumpCommit(commit: CommitLike): boolean {
     return false;
   }
 
-  return commit.commit?.author?.name === BOT_LOGIN || commit.author?.login === BOT_LOGIN;
+  const login = commit.author?.login ?? '';
+  return (
+    commit.commit?.author?.name === DEFAULT_BOT_LOGIN ||
+    login === DEFAULT_BOT_LOGIN ||
+    login.endsWith('[bot]')
+  );
 }
 
 interface CommitAndPushParams {
@@ -303,11 +334,8 @@ export async function run(): Promise<void> {
       fallbackVersion: workspaceVersion
     });
 
-    // Ignore the version file and changelog from the diff — they're not user code.
-    // Both paths must be relative to workdir to match GitHub's file.filename values.
     const resolvedChangelogPath = path.resolve(workdir, changelogPath);
-    const filesToIgnore = [resolvedVersionFile, resolvedChangelogPath]
-      .map((f) => path.relative(workdir, f));
+    const filesToIgnore = buildIgnoredPaths(workdir, resolvedVersionFile, resolvedChangelogPath);
     const allFiles = await octokit.paginate(octokit.rest.pulls.listFiles, {
       owner,
       repo,

@@ -27,11 +27,34 @@ jobs:
     if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
 
+    # Surfaced as env because the `secrets` context is not dependable inside a
+    # step-level `if:`. Reading it through `env` is unambiguous.
+    env:
+      HAS_APP: ${{ secrets.SEMVER_APP_ID != '' && secrets.SEMVER_APP_PRIVATE_KEY != '' }}
+
     steps:
+      # Pushes made with GITHUB_TOKEN do not start workflow runs — GitHub blocks that
+      # to stop a workflow re-triggering itself. That also means the bump commit this
+      # action pushes reports no status checks, which blocks merges once a required
+      # check is configured. An App installation token is a different credential and
+      # is not subject to that guard, and it attributes commits to the app rather than
+      # to a person. Falls back to GITHUB_TOKEN when the App secrets are absent.
+      - name: Mint a GitHub App token
+        id: app-token
+        if: ${{ env.HAS_APP == 'true' }}
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.SEMVER_APP_ID }}
+          private-key: ${{ secrets.SEMVER_APP_PRIVATE_KEY }}
+
       - name: Check out repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # The push identity comes from the credentials checkout persists, so this
+          # token — not the one passed to the action below — decides whether the
+          # bump commit starts a workflow run.
+          token: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -48,5 +71,5 @@ jobs:
       - name: Recommend and apply semantic version
         uses: ./
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
