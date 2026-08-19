@@ -27,6 +27,11 @@ jobs:
     if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
 
+    # Surfaced as env because the `secrets` context is not dependable inside a
+    # step-level `if:`. Reading it through `env` is unambiguous.
+    env:
+      HAS_APP: ${{ secrets.SEMVER_APP_ID != '' && secrets.SEMVER_APP_PRIVATE_KEY != '' }}
+
     steps:
       # Pushes made with GITHUB_TOKEN do not start workflow runs — GitHub blocks that
       # to stop a workflow re-triggering itself. That also means the bump commit this
@@ -36,7 +41,7 @@ jobs:
       # to a person. Falls back to GITHUB_TOKEN when the App secrets are absent.
       - name: Mint a GitHub App token
         id: app-token
-        if: ${{ secrets.SEMVER_APP_ID != '' }}
+        if: ${{ env.HAS_APP == 'true' }}
         uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ secrets.SEMVER_APP_ID }}
