@@ -288,3 +288,22 @@ jobs:
 ## Comparison with alternatives
 
 See [COMPARISON.md](./COMPARISON.md) for a detailed comparison with `semantic-release`, `release-please`, and `changesets`.
+
+---
+
+## Development
+
+```bash
+npm ci
+npm run build   # tsc -> dist/ (npm package), ncc -> bundle/ (action bundles)
+npm test
+```
+
+`bundle/` is committed on purpose. GitHub Actions runs `bundle/action/index.js` and
+`bundle/release/index.js` directly from the checked-out repository — it never runs a
+build step and never installs dependencies — so the bundles must be in git for
+`uses: PramodKumarYadav/agentic-semver@v1` to work at all. `dist/` stays gitignored
+because it only serves npm consumers, who install dependencies normally.
+
+**Any change under `src/` requires running `npm run build` and committing the
+resulting `bundle/` diff.** CI fails the pull request otherwise.

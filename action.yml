@@ -59,4 +59,4 @@ outputs:
     description: Markdown changelog entry generated for the release.
 runs:
   using: node20
-  main: dist/action.js
+  main: bundle/action/index.js
