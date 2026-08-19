@@ -39,6 +39,20 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Users reference this action as @v1, so the floating major tag has to
+      # follow every release. Without it, the README examples resolve to nothing.
+      - name: Move major version tag
+        if: steps.release.outputs.released == 'true'
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          MAJOR="v${VERSION%%.*}"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -f "$MAJOR"
+          git push --force origin "refs/tags/$MAJOR"
+          echo "Moved $MAJOR to $(git rev-parse --short HEAD)."
+
       - name: Publish package to npm
         if: steps.release.outputs.released == 'true'
         run: npm publish --provenance
