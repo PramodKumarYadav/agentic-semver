@@ -179,7 +179,10 @@ installation token** is the option that does not tie commits to an individual:
 1. Create a GitHub App under your account or organisation with repository permissions
    `contents: write`, `pull requests: write`, and `issues: write`, then install it on
    the repository.
-2. Store the App ID and the private key as repository secrets.
+2. Store the App ID and the private key as repository secrets — the example below
+   expects them as `SEMVER_APP_ID` and `SEMVER_APP_PRIVATE_KEY`. Pipe the key file in
+   rather than pasting it, so the `BEGIN`/`END` lines and newlines survive:
+   `gh secret set SEMVER_APP_PRIVATE_KEY < your-app.private-key.pem`.
 3. Mint a token in the workflow and hand it to **both** `actions/checkout` and this
    action:
 
