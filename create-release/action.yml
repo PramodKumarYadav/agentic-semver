@@ -32,6 +32,13 @@ inputs:
     description: Mark the release as a pre-release.
     required: false
     default: "false"
+  target-commitish:
+    description: >
+      Commit the tag should point at. Defaults to the commit that triggered the workflow.
+      When a version bump is pushed earlier in the same job, pass that commit's SHA — the triggering
+      commit still carries the previous version, so tagging it would point the release at the wrong tree.
+    required: false
+    default: ""
 
 outputs:
   version:

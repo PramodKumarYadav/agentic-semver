@@ -1,21 +1,52 @@
-name: Create GitHub Release and Publish package to npm
+name: Apply version, release, and publish
 
 on:
-  push:
+  pull_request:
     branches:
       - main
+    types:
+      - closed
+
+# The version file is read, incremented, and pushed. Two of these running at once
+# would both read the same number, so they queue instead. cancel-in-progress stays
+# off: a cancelled run leaves a merged pull request with no release.
+concurrency:
+  group: release-main
+  cancel-in-progress: false
 
 permissions:
-  contents: write # to create GitHub releases and tags
-  id-token: write # for npm provenance
+  contents: write # push the bump commit, create releases and tags
+  pull-requests: read # read the recommendation recorded on the pull request
+  id-token: write # npm provenance
 
 jobs:
-  publish:
+  release:
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
+    env:
+      HAS_APP: ${{ secrets.SEMVER_APP_ID != '' && secrets.SEMVER_APP_PRIVATE_KEY != '' }}
+
     steps:
-      - name: Check out repository
+      # main requires a pull request, and GITHUB_TOKEN cannot bypass that. An App
+      # installation token in the bypass list can. The only files this token ever
+      # commits are the version file, its lockfile, and CHANGELOG.md.
+      - name: Mint a GitHub App token
+        id: app-token
+        if: ${{ env.HAS_APP == 'true' }}
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.SEMVER_APP_ID }}
+          private-key: ${{ secrets.SEMVER_APP_PRIVATE_KEY }}
+
+      - name: Check out main
         uses: actions/checkout@v4
+        with:
+          # A closed pull_request event otherwise checks out the merge ref. The bump
+          # has to be computed and pushed against the branch itself.
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -30,28 +61,42 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Verify main before anything is versioned or tagged. A merge that broke the
+      # build should not produce a release.
       - name: Run tests
         run: npm test
 
+      - name: Apply the version bump
+        id: bump
+        uses: ./apply-version
+        with:
+          github-token: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+
       - name: Create GitHub release
         id: release
+        if: steps.bump.outputs.skipped == 'false'
         uses: ./create-release
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          # The merge commit still carries the previous version, so the tag has to
+          # point at the bump commit instead.
+          target-commitish: ${{ steps.bump.outputs.commit-sha }}
 
-      # Users reference this action as @v1, so the floating major tag has to
+      # Users reference this action as @v2, so the floating major tag has to
       # follow every release. Without it, the README examples resolve to nothing.
       - name: Move major version tag
         if: steps.release.outputs.released == 'true'
         env:
           VERSION: ${{ steps.release.outputs.version }}
+          SHA: ${{ steps.bump.outputs.commit-sha }}
         run: |
           MAJOR="v${VERSION%%.*}"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git tag -f "$MAJOR"
+          git tag -f "$MAJOR" "$SHA"
           git push --force origin "refs/tags/$MAJOR"
-          echo "Moved $MAJOR to $(git rev-parse --short HEAD)."
+          echo "Moved $MAJOR to $SHA."
 
       - name: Publish package to npm
         if: steps.release.outputs.released == 'true'

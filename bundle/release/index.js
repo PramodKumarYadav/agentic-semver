@@ -36565,6 +36565,7 @@ async function runRelease() {
         const tagPrefix = getInput('tag-prefix') || 'v';
         const draft = getBooleanInput('draft');
         const prerelease = getBooleanInput('prerelease');
+        const targetCommitish = getInput('target-commitish');
         const { owner, repo } = github_context.repo;
         const octokit = getOctokit(githubToken);
         // Resolve version file — use the provided path or auto-detect.
@@ -36605,8 +36606,10 @@ async function runRelease() {
             body: releaseNotes,
             draft,
             prerelease,
-            // Pin the release to the exact commit that triggered this run.
-            target_commitish: github_context.sha
+            // Pin the release to the commit whose tree actually carries this version.
+            // That is the triggering commit only when nothing was pushed since; a job
+            // that bumps the version first must pass the bump commit here instead.
+            target_commitish: targetCommitish || github_context.sha
         });
         setOutput('released', 'true');
         info(`Release ${tag} created successfully.`);

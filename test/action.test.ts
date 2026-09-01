@@ -1,6 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { filterRelevantFiles, loadBaseVersion, applyVersionLabel, isOwnBumpCommit, buildIgnoredPaths } from '../src/action.js';
+import {
+  filterRelevantFiles,
+  loadBaseVersion,
+  applyVersionLabel,
+  buildIgnoredPaths,
+  buildSummaryCommentBody
+} from '../src/action.js';
+import { parseMetadata } from '../src/metadata.js';
 
 // ---------------------------------------------------------------------------
 // filterRelevantFiles
@@ -179,58 +186,6 @@ test('applyVersionLabel throws when bump is not a recognised semver type', async
   );
 });
 
-const bumpCommit = (over: Record<string, unknown> = {}) => ({
-  commit: { message: 'chore: bump version to 1.2.3', author: { name: 'github-actions[bot]' } },
-  author: { login: 'github-actions[bot]' },
-  ...over
-});
-
-test('isOwnBumpCommit recognises the action\'s own bump commit', () => {
-  assert.equal(isOwnBumpCommit(bumpCommit()), true);
-});
-
-test('isOwnBumpCommit matches on committer name alone', () => {
-  assert.equal(isOwnBumpCommit(bumpCommit({ author: null })), true);
-});
-
-test('isOwnBumpCommit matches on actor login alone', () => {
-  assert.equal(
-    isOwnBumpCommit({
-      commit: { message: 'chore: bump version to 1.2.3', author: { name: 'Someone Else' } },
-      author: { login: 'github-actions[bot]' }
-    }),
-    true
-  );
-});
-
-test('isOwnBumpCommit ignores a human commit that mimics the subject', () => {
-  assert.equal(
-    isOwnBumpCommit({
-      commit: { message: 'chore: bump version to 1.2.3', author: { name: 'Pramod' } },
-      author: { login: 'PramodKumarYadav' }
-    }),
-    false
-  );
-});
-
-test('isOwnBumpCommit ignores an unrelated bot commit', () => {
-  assert.equal(isOwnBumpCommit(bumpCommit({ commit: { message: 'docs: tidy readme', author: { name: 'github-actions[bot]' } } })), false);
-});
-
-test('isOwnBumpCommit reads only the subject line, not the body', () => {
-  assert.equal(
-    isOwnBumpCommit({
-      commit: { message: 'feat: something\n\nchore: bump version to 1.2.3', author: { name: 'github-actions[bot]' } },
-      author: { login: 'github-actions[bot]' }
-    }),
-    false
-  );
-});
-
-test('isOwnBumpCommit tolerates a missing commit payload', () => {
-  assert.equal(isOwnBumpCommit({}), false);
-});
-
 test('buildIgnoredPaths excludes the lockfile alongside package.json', () => {
   assert.deepEqual(
     buildIgnoredPaths('/w', '/w/package.json', '/w/CHANGELOG.md'),
@@ -263,32 +218,28 @@ test('buildIgnoredPaths output is consumable by filterRelevantFiles', () => {
   assert.deepEqual(filterRelevantFiles(files, ignored).map((f) => f.filename), ['src/index.ts']);
 });
 
-test('isOwnBumpCommit recognises a GitHub App bot as the author', () => {
-  assert.equal(
-    isOwnBumpCommit({
-      commit: { message: 'chore: bump version to 1.2.3', author: { name: 'agentic-semver[bot]' } },
-      author: { login: 'agentic-semver[bot]' }
-    }),
-    true
-  );
+const previewResult = { currentVersion: '1.2.2', nextVersion: '1.3.0', changelogEntry: '## 1.3.0 - 2026-01-01\n\n- Summary: Adds a thing\n- Added a thing\n' };
+const previewRecommendation = { bump: 'minor' as const, summary: 'Adds a thing', changelog: ['Added a thing'] };
+
+// The comment is the handoff to the post-merge run, so what it embeds has to
+// survive being read back off the API verbatim.
+test('buildSummaryCommentBody embeds a recommendation the post-merge run can recover', () => {
+  const body = buildSummaryCommentBody({ result: previewResult, recommendation: previewRecommendation, verbose: true });
+  assert.deepEqual(parseMetadata(body), previewRecommendation);
 });
 
-test('isOwnBumpCommit still rejects a bot commit without the bump subject', () => {
-  assert.equal(
-    isOwnBumpCommit({
-      commit: { message: 'chore: update dependencies', author: { name: 'dependabot[bot]' } },
-      author: { login: 'dependabot[bot]' }
-    }),
-    false
-  );
+test('buildSummaryCommentBody still carries the recommendation when the write-up is off', () => {
+  const body = buildSummaryCommentBody({ result: previewResult, recommendation: previewRecommendation, verbose: false });
+
+  assert.deepEqual(parseMetadata(body), previewRecommendation, 'comment-summary: false must not break the handoff');
+  assert.equal(body.includes('## Agentic semver update'), false);
+  assert.equal(body.includes(previewResult.changelogEntry.trim()), false);
 });
 
-test('isOwnBumpCommit rejects a human login that merely ends in bot', () => {
-  assert.equal(
-    isOwnBumpCommit({
-      commit: { message: 'chore: bump version to 1.2.3', author: { name: 'Robot' } },
-      author: { login: 'robot' }
-    }),
-    false
-  );
+test('buildSummaryCommentBody shows the entry and flags the version as provisional', () => {
+  const body = buildSummaryCommentBody({ result: previewResult, recommendation: previewRecommendation, verbose: true });
+
+  assert.match(body, /Recommended bump: \*\*minor\*\*/);
+  assert.match(body, /provisional/);
+  assert.ok(body.includes(previewResult.changelogEntry.trim()));
 });

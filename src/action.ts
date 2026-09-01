@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,11 +6,12 @@ import * as github from '@actions/github';
 import Anthropic from '@anthropic-ai/sdk';
 import {
   analyzePullRequest,
-  applyVersionRecommendation,
+  previewVersionRecommendation,
   type AnalysisRecommendation,
   type ApplyVersionResult,
   type ChangedFile
 } from './index.js';
+import { serializeMetadata } from './metadata.js';
 import { detectVersionFile, readVersionFromFile } from './version-files.js';
 
 interface LoadBaseVersionParams {
@@ -103,104 +103,13 @@ export function filterRelevantFiles(files: ChangedFile[], ignoredPaths: string[]
   return files.filter((file) => !ignored.has(file.filename));
 }
 
-function hasStagedChanges(files: string[]): boolean {
-  const changedFiles = execFileSync('git', ['diff', '--cached', '--name-only'], { encoding: 'utf8' }).trim();
-  if (!changedFiles) {
-    return false;
-  }
-
-  const staged = new Set(changedFiles.split('\n'));
-  return files.some((file) => staged.has(file.replace(/^\.\//, '')));
-}
-
-/** Subject line the action uses for its own version bump commits. */
-export const BUMP_COMMIT_PREFIX = 'chore: bump version to ';
-
-const DEFAULT_BOT_LOGIN = 'github-actions[bot]';
-
-interface CommitLike {
-  commit?: { message?: string; author?: { name?: string } | null } | null;
-  author?: { login?: string } | null;
-}
-
-/**
- * True when a commit is one this action pushed itself.
- *
- * The bump commit becomes the pull request head, which fires another
- * `synchronize` event. Without this check the next run would re-analyse the
- * same diff and rewrite the changelog with freshly sampled text, which differs
- * from the previous run and so produces yet another commit — a loop.
- *
- * Identity is matched loosely on purpose. When the push is made with a GitHub
- * App installation token the commit is attributed to that app's own bot account,
- * so pinning to `github-actions[bot]` alone would stop recognising our own work
- * and reopen the loop. Any `[bot]` actor carrying our exact subject prefix is
- * treated as ours; the prefix is what makes that safe.
- */
-export function isOwnBumpCommit(commit: CommitLike): boolean {
-  const subject = (commit.commit?.message ?? '').split('\n')[0].trim();
-  if (!subject.startsWith(BUMP_COMMIT_PREFIX)) {
-    return false;
-  }
-
-  const login = commit.author?.login ?? '';
-  return (
-    commit.commit?.author?.name === DEFAULT_BOT_LOGIN ||
-    login === DEFAULT_BOT_LOGIN ||
-    login.endsWith('[bot]')
-  );
-}
-
-interface CommitAndPushParams {
-  pullRequest: { head: { ref: string } };
-  versionFilePath: string;
-  changelogPath: string;
-  nextVersion: string;
-}
-
-export function commitAndPushChanges({
-  pullRequest,
-  versionFilePath,
-  changelogPath,
-  nextVersion
-}: CommitAndPushParams): boolean {
-  execFileSync('git', ['config', 'user.name', 'github-actions[bot]']);
-  execFileSync('git', ['config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com']);
-
-  // For pull_request events actions/checkout materialises refs/pull/N/merge, so HEAD
-  // is main merged into the PR branch. Branching from it and pushing would land that
-  // merge commit on the contributor's branch. Re-point at the real head instead:
-  // --mixed resets the index to it while leaving the files we just generated in place.
-  execFileSync('git', ['fetch', '--no-tags', 'origin', pullRequest.head.ref]);
-  execFileSync('git', ['checkout', '-B', pullRequest.head.ref]);
-  execFileSync('git', ['reset', '--mixed', 'FETCH_HEAD']);
-
-  const filesToStage = [versionFilePath, changelogPath];
-  // Keep package-lock.json in sync for Node.js projects.
-  if (path.basename(versionFilePath) === 'package.json') {
-    const lockPath = path.join(path.dirname(path.resolve(versionFilePath)), 'package-lock.json');
-    if (fs.existsSync(lockPath)) {
-      filesToStage.push(lockPath);
-    }
-  }
-  execFileSync('git', ['add', ...filesToStage]);
-
-  if (!hasStagedChanges([versionFilePath, changelogPath])) {
-    core.info(`${path.basename(versionFilePath)} and ${path.basename(changelogPath)} are already up to date.`);
-    return false;
-  }
-
-  execFileSync('git', ['commit', '-m', `${BUMP_COMMIT_PREFIX}${nextVersion}`], { stdio: 'inherit' });
-  execFileSync('git', ['push', 'origin', `HEAD:${pullRequest.head.ref}`], { stdio: 'inherit' });
-  return true;
-}
-
 interface PostSummaryCommentParams {
   owner: string;
   repo: string;
   issueNumber: number;
   result: ApplyVersionResult;
   recommendation: AnalysisRecommendation;
+  verbose?: boolean;
 }
 
 interface OctokitWithIssues extends OctokitLike {
@@ -263,20 +172,40 @@ export async function applyVersionLabel(
   core.info(`Applied label "${bump}" to PR #${issueNumber}.`);
 }
 
-export async function postSummaryComment(
-  octokit: OctokitWithIssues,
-  { owner, repo, issueNumber, result, recommendation }: PostSummaryCommentParams
-): Promise<void> {
-  const body = [
+export function buildSummaryCommentBody(
+  { result, recommendation, verbose }: { result: ApplyVersionResult; recommendation: AnalysisRecommendation; verbose: boolean }
+): string {
+  const metadata = serializeMetadata(recommendation);
+
+  if (!verbose) {
+    // `comment-summary: false` suppresses the write-up, not the handoff. The
+    // release run reads the recommendation back out of this comment, so a
+    // comment always gets posted — this is the smallest one that still carries it.
+    return [`Agentic semver: recommending a **${recommendation.bump}** bump.`, '', metadata].join('\n');
+  }
+
+  return [
     '## Agentic semver update',
     '',
     `- Recommended bump: **${recommendation.bump}**`,
     `- Current version: **${result.currentVersion}**`,
-    `- Next version: **${result.nextVersion}**`,
+    `- Next version: **${result.nextVersion}** (provisional — settled when this merges)`,
     '',
-    result.changelogEntry.trim()
+    result.changelogEntry.trim(),
+    '',
+    '<sub>Nothing is committed to this branch. The version file and changelog are written to '
+      + '`main` after merge, from the bump recorded here. Change the recommendation by swapping '
+      + 'the `major` / `minor` / `patch` label on this pull request — the label wins.</sub>',
+    '',
+    metadata
   ].join('\n');
+}
 
+export async function postSummaryComment(
+  octokit: OctokitWithIssues,
+  { owner, repo, issueNumber, result, recommendation, verbose = true }: PostSummaryCommentParams
+): Promise<void> {
+  const body = buildSummaryCommentBody({ result, recommendation, verbose });
   await octokit.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body });
 }
 
@@ -288,7 +217,6 @@ export async function run(): Promise<void> {
     const changelogPath = (core.getInput('changelog-path') || 'CHANGELOG.md').replace(/^\.\//, '');
     const targetBaseBranch = core.getInput('target-base-branch') || 'main';
     const maxFiles = Number.parseInt(core.getInput('max-files') || '40', 10);
-    const commitChanges = core.getBooleanInput('commit-changes');
     const commentSummary = core.getBooleanInput('comment-summary');
     const applyLabel = core.getBooleanInput('apply-label');
     const versionFileInput = core.getInput('version-file-path').replace(/^\.\//, '');
@@ -306,16 +234,6 @@ export async function run(): Promise<void> {
 
     const { owner, repo } = github.context.repo;
     const octokit = github.getOctokit(githubToken);
-
-    // Stop before spending an API call on Claude if the head is our own bump commit.
-    // That commit fired this run, and re-analysing it would rewrite the changelog with
-    // freshly sampled text, push again, and trigger the next run indefinitely.
-    const headCommit = await octokit.rest.repos.getCommit({ owner, repo, ref: String(pullRequest.head.sha) });
-    if (isOwnBumpCommit(headCommit.data)) {
-      core.info('Skipping analysis because the pull request head is this action\'s own version bump commit.');
-      core.setOutput('skipped', 'true');
-      return;
-    }
 
     // Resolve which version file to use. Explicit input beats auto-detect.
     const workdir = process.env.GITHUB_WORKSPACE ?? process.cwd();
@@ -367,12 +285,10 @@ export async function run(): Promise<void> {
       maxFiles
     });
 
-    const result = applyVersionRecommendation({
-      versionFilePath: resolvedVersionFile,
-      changelogPath: resolvedChangelogPath,
-      baseVersion,
-      recommendation
-    });
+    // Preview only. Writing the version file here would race every other open
+    // pull request: they all read the same baseline off main and would all
+    // predict the same next version. The write happens once, after the merge.
+    const result = previewVersionRecommendation({ baseVersion, recommendation });
 
     core.setOutput('skipped', 'false');
     core.setOutput('bump', recommendation.bump);
@@ -387,47 +303,42 @@ export async function run(): Promise<void> {
       .addBreak()
       .addRaw(`Current version: ${result.currentVersion}`)
       .addBreak()
-      .addRaw(`Next version: ${result.nextVersion}`)
+      .addRaw(`Next version (provisional): ${result.nextVersion}`)
       .addBreak()
       .addCodeBlock(result.changelogEntry.trim(), 'markdown')
       .write();
 
     const isFork = (pullRequest.head.repo as { full_name: string }).full_name !== `${owner}/${repo}`;
-    if (commitChanges && !isFork) {
-      commitAndPushChanges({
-        pullRequest: { head: { ref: String(pullRequest.head.ref) } },
-        versionFilePath: path.relative(workdir, resolvedVersionFile),
-        changelogPath,
-        nextVersion: result.nextVersion
-      });
-    } else if (commitChanges && isFork) {
-      core.warning('Skipping commit because the pull request comes from a fork.');
-    }
 
-    if (commentSummary) {
+    // A fork pull request runs with a read-only token, so neither the comment nor
+    // the label lands. That is survivable: the release run finds no recommendation
+    // recorded and re-analyses the merged diff itself.
+    if (isFork) {
+      core.warning(
+        'Pull request comes from a fork, so the recommendation cannot be recorded on it. '
+          + 'The release workflow will re-analyse the diff after merge.'
+      );
+    } else {
       await postSummaryComment(octokit as unknown as OctokitWithIssues, {
         owner,
         repo,
         issueNumber: pullRequest.number as number,
         result,
-        recommendation
+        recommendation,
+        verbose: commentSummary
       });
     }
 
-    if (applyLabel) {
-      if (isFork) {
-        core.warning('Skipping label application because the pull request comes from a fork.');
-      } else {
-        try {
-          await applyVersionLabel(octokit as unknown as OctokitWithLabels, {
-            owner,
-            repo,
-            issueNumber: pullRequest.number as number,
-            bump: recommendation.bump
-          });
-        } catch (labelErr) {
-          core.warning(`Failed to apply version label: ${labelErr instanceof Error ? labelErr.message : String(labelErr)}`);
-        }
+    if (applyLabel && !isFork) {
+      try {
+        await applyVersionLabel(octokit as unknown as OctokitWithLabels, {
+          owner,
+          repo,
+          issueNumber: pullRequest.number as number,
+          bump: recommendation.bump
+        });
+      } catch (labelErr) {
+        core.warning(`Failed to apply version label: ${labelErr instanceof Error ? labelErr.message : String(labelErr)}`);
       }
     }
   } catch (error) {

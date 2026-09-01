@@ -3,11 +3,11 @@ import path from 'node:path';
 import semver from 'semver';
 import type Anthropic from '@anthropic-ai/sdk';
 import { detectVersionFile, readVersionFromFile, writeVersionToFile, VERSION_FILE_CANDIDATES } from './version-files.js';
-import { writeChangelogEntry, upsertChangelogEntry } from './changelog.js';
+import { writeChangelogEntry, upsertChangelogEntry, renderChangelogEntry } from './changelog.js';
 
 // Re-export so consumers only need to import from this one entry point.
 export { detectVersionFile, readVersionFromFile, writeVersionToFile, VERSION_FILE_CANDIDATES };
-export { upsertChangelogEntry };
+export { upsertChangelogEntry, renderChangelogEntry };
 
 const SUPPORTED_BUMPS = new Set<string>(['patch', 'minor', 'major']);
 const MAX_PATCH_CHARACTERS = 4000;
@@ -184,6 +184,36 @@ function calculateNextVersion(currentVersion: string, bump: string): string {
   const nextVersion = semver.inc(currentVersion, bump as semver.ReleaseType);
   if (!nextVersion) throw new Error(`Unable to calculate a ${bump} version from ${currentVersion}.`);
   return nextVersion;
+}
+
+export interface PreviewVersionRecommendationParams {
+  baseVersion: string;
+  recommendation: AnalysisRecommendation;
+  date?: string;
+}
+
+/**
+ * Computes what a recommendation would produce, without writing anything.
+ *
+ * Used by the pull request run, which reports the bump and the entry for review
+ * but leaves the files alone. Both the version and the date here are estimates:
+ * whichever pull request merges first takes the version, and the date is the one
+ * the post-merge run observes. The prose is the part that carries over intact.
+ */
+export function previewVersionRecommendation({
+  baseVersion,
+  recommendation,
+  date
+}: PreviewVersionRecommendationParams): ApplyVersionResult {
+  const nextVersion = calculateNextVersion(baseVersion, recommendation.bump);
+  const changelogEntry = renderChangelogEntry(
+    nextVersion,
+    recommendation.summary,
+    recommendation.changelog,
+    date
+  );
+
+  return { currentVersion: baseVersion, nextVersion, changelogEntry };
 }
 
 export interface ApplyVersionRecommendationParams {
