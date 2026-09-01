@@ -77,9 +77,10 @@ a follow-up. So the reviewable half is the number, and the automated half is the
 
 - An __Anthropic API key__ with access to Claude. Store it as a repository secret named `ANTHROPIC_API_KEY`.
 - A repository with a supported version file at the root (or specify the path explicitly).
-- A __GitHub App__ installed on the repository, if `main` requires a pull request before
-  merging. The release workflow pushes the bump commit straight to `main`, and
-  `GITHUB_TOKEN` cannot bypass that rule. See
+- A __credential that can bypass your branch rules__, if `main` requires a pull request
+  before merging. The release workflow pushes the bump commit straight to `main`, and
+  `GITHUB_TOKEN` cannot be granted an exception to that — a GitHub App, a deploy key, or a
+  PAT is needed instead. See
   [Pushing the bump to a protected main](#pushing-the-bump-to-a-protected-main) for the
   five-minute setup. Skip it if `main` accepts direct pushes.
 
@@ -229,20 +230,34 @@ Runs on pull requests. Analyzes the diff with Claude, reports the bump and the c
 
 ### Pushing the bump to a protected main
 
-The release workflow pushes one commit to `main`. If `main` requires a pull request
-before merging, `GITHUB_TOKEN` cannot do that, and the push fails.
+The release workflow pushes one commit to `main`. If `main` requires a pull request before
+merging, `GITHUB_TOKEN` cannot do that and the push fails.
 
-The commit only ever touches your version file, its lockfile, and `CHANGELOG.md` — text
-that describes code that already passed review, containing nothing executable. Letting it
-bypass the checks that guard the code itself buys nothing, so the fix is to give the push
-a credential that can bypass. A **GitHub App installation token** is the option that does
-not tie commits to an individual:
+**`GITHUB_TOKEN` cannot be granted an exception.** Do not go looking for one — GitHub
+deliberately refuses to let `github-actions[bot]` sit in a bypass list, because any
+workflow file in the repository can mint that token, which would make branch protection
+circumventable by anyone who can open a pull request. Bypass is eligible only for repo
+admins and owners, the maintain/write roles, teams, **GitHub Apps**, **deploy keys**, and
+Dependabot.
+
+So the push needs a credential of its own. What this commit contains is worth knowing
+before you grant one: only your version file, its lockfile, and `CHANGELOG.md` — text
+describing code that already passed review, nothing executable. Gating it behind the
+checks that guard the code itself buys nothing.
+
+Pick whichever of these fits your setup.
+
+#### GitHub App — best for organisations
+
+Scoped permissions, and the commits are attributed to an app rather than a person.
 
 1. Create a GitHub App under your account or organisation with repository permissions
    `contents: write` and `pull requests: read`, then install it on the repository.
-2. Add the App to the bypass list for `main`. Under **Settings → Rules → Rulesets**, open
-   the ruleset protecting `main` and add the App under **Bypass list**. (On classic branch
-   protection this is **Allow specified actors to bypass required pull requests**.)
+2. Add the App to the bypass list. Under **Settings → Rules → Rulesets**, open the ruleset
+   protecting `main`, then **Bypass list → Add bypass → GitHub Apps**, and set the mode to
+   **Always** — not "For pull requests only", since this is a direct push. (On classic
+   branch protection the equivalent is **Allow specified actors to bypass required pull
+   requests**.)
 3. Store the App ID and the private key as repository secrets — the example expects
    `SEMVER_APP_ID` and `SEMVER_APP_PRIVATE_KEY`. Pipe the key file in rather than pasting
    it, so the `BEGIN`/`END` lines and newlines survive:
@@ -250,12 +265,34 @@ not tie commits to an individual:
 4. Mint a token in the workflow and hand it to **both** `actions/checkout` and
    `apply-version`.
 
-Passing the token to the action alone is not enough — the push uses whatever credentials
-`actions/checkout` persisted, so the `token:` on the checkout step is what actually
-changes the behaviour.
+**Across many repositories, do this once at the org level.** Install the App org-wide, then
+add it to the bypass list of an **organisation ruleset** rather than each repository's own.
+Every repo using this action is then covered with no per-repo setup. Under
+**Organisation settings → Repository → Rulesets**.
 
-A personal access token works too, but it belongs to one person, it expires, and the bump
-commits are attributed to them. The app avoids all three.
+#### Deploy key — simplest for a single repository
+
+A deploy key is eligible for ruleset bypass, needs no App and no organisation, and is
+scoped to one repository. The trade-offs: the checkout has to use SSH, you rotate the key
+yourself, and the commit carries whatever git identity you configure rather than a bot's.
+
+1. Generate a key pair and add the public half under **Settings → Deploy keys** with
+   **Allow write access** ticked.
+2. Add it to the ruleset **Bypass list** the same way as above.
+3. Store the private half as a secret and pass it to `actions/checkout` via
+   `ssh-key:` instead of `token:`.
+
+#### Personal access token — works, but
+
+A fine-grained PAT with `contents: write` on the repository does the job, and its owner can
+be added to the bypass list. But it belongs to one person, it expires, and every bump commit
+is attributed to them. The App and the deploy key both avoid that.
+
+---
+
+Whichever you choose, passing the credential to the action alone is not enough — the push
+uses whatever `actions/checkout` persisted, so the `token:` (or `ssh-key:`) on the
+**checkout** step is what actually changes the behaviour.
 
 If `main` accepts direct pushes, you need none of this: `GITHUB_TOKEN` is enough.
 
@@ -440,8 +477,10 @@ to `contents: read` and needs no App token. One model call per pull request inst
 per push.
 
 **What costs more.** The release workflow now pushes to `main`, so if `main` requires a
-pull request you need an App in its bypass list. If you already created an App for v1, you
-are reusing it — move it to the release workflow and add it to the bypass list.
+pull request you need a credential in its bypass list — an App, a deploy key, or a PAT.
+If you already created an App for v1, you are reusing it: move it to the release workflow
+and add it to the bypass list. Note that `GITHUB_TOKEN` cannot be given that exception, so
+this step has no zero-setup shortcut.
 
 **Steps.**
 
@@ -449,7 +488,8 @@ are reusing it — move it to the release workflow and add it to the bypass list
    on the release workflow changes from `push: main` to `pull_request: closed`, and the
    `concurrency` block is required, not optional.
 2. Move the App token from the PR workflow to the release workflow, and add the App to the
-   bypass list for `main`.
+   bypass list for `main` — see
+   [Pushing the bump to a protected main](#pushing-the-bump-to-a-protected-main).
 3. Drop `commit-changes` from your inputs — it no longer exists. The PR action never
    commits.
 4. Bump your `uses:` pins from `@v1` to `@v2`.
