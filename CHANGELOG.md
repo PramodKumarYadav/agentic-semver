@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.1 - 2026-09-01
+
+- Summary: Fixed a critical bug where the apply-version action would fail after successfully pushing its commit because it inadvertently ran the pull request action code, reading an undefined input. The fix restructures entry points so each action bundle is isolated and cannot accidentally invoke another action's code path.
+- Fixed apply-version action failing after push by moving each action's entry point to separate side-effect-free files in src/entry/
+- Extracted shared diff-filtering helpers to src/diff-filter.ts to prevent cross-contamination between action bundles
+- Added retry safety: apply-version now recognizes its own bump commits and skips re-bumping when re-run after a partial failure
+- Added CI checks to verify bundle isolation and prevent action code from appearing in other action bundles
+
 ## 2.0.0 - 2026-09-01
 
 - Summary: Restructured the versioning workflow to compute and apply version bumps after PR merge instead of during PR review, preventing version conflicts when multiple PRs are open simultaneously.
