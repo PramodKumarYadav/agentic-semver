@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.0 - 2026-09-01
+
+- Summary: Restructured the versioning workflow to compute and apply version bumps after PR merge instead of during PR review, preventing version conflicts when multiple PRs are open simultaneously.
+- **BREAKING:** Split versioning into two stages—classification on PR (read-only) and version write after merge (serialized)
+- **BREAKING:** Changed workflow permissions and removed PR branch commits; `@v1` users must migrate workflow files to use `@v2`
+- Added `apply-version` action to handle post-merge version bumps with concurrency control
+- Added metadata serialization to preserve version recommendations across PR lifecycle
+- Fixed race condition where concurrent PRs would predict and overwrite the same version number
+
 ## 1.2.2 - 2026-08-19
 
 - Summary: Added test execution step to the agentic-semver workflow to prevent version bumps when tests are failing. This is a maintenance improvement that fixes a race condition between CI and versioning workflows without changing any external behavior or API.
