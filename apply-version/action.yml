@@ -1,0 +1,60 @@
+name: Agentic SemVer Apply
+description: >
+  Apply the version bump and changelog entry for a merged pull request, directly on the base branch.
+  Reads the recommendation recorded on the pull request by the agentic-semver action, so no model call
+  is needed on the happy path. Falls back to analyzing the merged diff when nothing was recorded.
+
+inputs:
+  github-token:
+    description: >
+      Token used to read the pull request and push the version commit. It must be able to push to the
+      base branch — if that branch requires a pull request, the token's app needs to be in the bypass
+      list. The commit only ever touches the version file, its lockfile, and the changelog.
+    required: true
+  anthropic-api-key:
+    description: >
+      Anthropic API key, used only when the merged pull request carries no recorded recommendation
+      (a fork pull request, or one merged before this workflow existed). Optional, but without it those
+      merges fail instead of being versioned.
+    required: false
+    default: ""
+  model:
+    description: Claude model used for the fallback analysis.
+    required: false
+    default: claude-sonnet-4-5
+  version-file-path:
+    description: >
+      Path to the version file to update. Auto-detected when not specified.
+      Supported files: package.json, pyproject.toml, pom.xml, gradle.properties, Cargo.toml, Chart.yaml, composer.json.
+    required: false
+    default: ""
+  changelog-path:
+    description: Path to the changelog file that should be updated.
+    required: false
+    default: CHANGELOG.md
+  target-base-branch:
+    description: Only process pull requests merged into this branch, and push the bump there.
+    required: false
+    default: main
+  max-files:
+    description: Maximum number of changed files to include in a fallback analysis prompt.
+    required: false
+    default: "40"
+
+outputs:
+  skipped:
+    description: Whether the action skipped processing.
+  bump:
+    description: Semantic version bump that was applied.
+  current-version:
+    description: Version read from the base branch before the bump.
+  next-version:
+    description: Version written to the version file.
+  changelog-entry:
+    description: Markdown changelog entry that was written.
+  commit-sha:
+    description: SHA of the pushed version commit. Pass this to create-release as target-commitish.
+
+runs:
+  using: node20
+  main: ../bundle/apply-version/index.js

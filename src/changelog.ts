@@ -29,6 +29,21 @@ function createChangelogEntry(version: string, summary: string, changelog: strin
 // ──────────────────────────────────────────────────────────────────────
 
 /**
+ * Renders a changelog entry without writing it.
+ *
+ * The pull request run shows a reviewer the entry it recommends but must not
+ * write it — the version in the heading is a prediction until the merge lands.
+ */
+export function renderChangelogEntry(
+  version: string,
+  summary: string,
+  changelog: string[],
+  date: string = formatDate()
+): string {
+  return createChangelogEntry(version, summary, changelog, date);
+}
+
+/**
  * Inserts or replaces the changelog section for `version` inside `existingContent`.
  * Preserves the `# Changelog` header and all other version sections.
  */

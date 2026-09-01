@@ -1,11 +1,16 @@
 name: Agentic SemVer
-description: Use Claude to recommend semantic version bumps and maintain CHANGELOG.md for pull requests into main.
+description: >
+  Use Claude to recommend a semantic version bump and changelog entry for a pull request.
+  Records the recommendation on the pull request for the apply-version action to apply after merge.
+  Writes nothing to the branch.
 branding:
   icon: tag
   color: purple
 inputs:
   github-token:
-    description: GitHub token used to read pull request metadata and push generated version changes.
+    description: >
+      GitHub token used to read pull request metadata, comment, and label. Needs only read access to
+      contents — this action does not push. secrets.GITHUB_TOKEN is sufficient.
     required: true
   anthropic-api-key:
     description: Anthropic API key used to call Claude.
@@ -32,12 +37,10 @@ inputs:
     description: Maximum number of changed files to include in the Claude prompt.
     required: false
     default: "40"
-  commit-changes:
-    description: Commit and push package.json and changelog updates back to the pull request branch.
-    required: false
-    default: "true"
   comment-summary:
-    description: Post a pull request comment summarizing the recommended bump and changelog entry.
+    description: >
+      Include the human-readable write-up in the pull request comment. A comment is posted either way:
+      it carries the recommendation that the apply-version action reads back after the merge.
     required: false
     default: "true"
   apply-label:
@@ -50,9 +53,9 @@ outputs:
   bump:
     description: Recommended semantic version bump.
   current-version:
-    description: Version found on the base branch.
+    description: Version found on the base branch at analysis time.
   next-version:
-    description: Version written to the version file.
+    description: Version this bump would produce. Provisional — the version is settled after the merge.
   summary:
     description: Claude summary of the pull request changes.
   changelog-entry:

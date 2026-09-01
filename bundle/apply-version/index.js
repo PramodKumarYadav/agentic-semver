@@ -43890,15 +43890,14 @@ var __webpack_exports__ = {};
 
 // EXPORTS
 __nccwpck_require__.d(__webpack_exports__, {
-  DV: () => (/* binding */ applyVersionLabel),
-  ly: () => (/* binding */ buildIgnoredPaths),
-  Ui: () => (/* binding */ buildSummaryCommentBody),
-  nH: () => (/* binding */ filterRelevantFiles),
-  GC: () => (/* binding */ loadBaseVersion),
-  S$: () => (/* binding */ postSummaryComment),
-  eF: () => (/* binding */ run)
+  oU: () => (/* binding */ checkoutBranchTip),
+  tk: () => (/* binding */ commitAndPush),
+  X2: () => (/* binding */ resolveBump),
+  YS: () => (/* binding */ runApplyVersion)
 });
 
+// EXTERNAL MODULE: external "node:child_process"
+var external_node_child_process_ = __nccwpck_require__(1421);
 // EXTERNAL MODULE: external "node:fs"
 var external_node_fs_ = __nccwpck_require__(3024);
 var external_node_fs_default = /*#__PURE__*/__nccwpck_require__.n(external_node_fs_);
@@ -44223,11 +44222,11 @@ var HttpCodes;
     HttpCodes[HttpCodes["ServiceUnavailable"] = 503] = "ServiceUnavailable";
     HttpCodes[HttpCodes["GatewayTimeout"] = 504] = "GatewayTimeout";
 })(HttpCodes || (HttpCodes = {}));
-var action_Headers;
+var apply_version_Headers;
 (function (Headers) {
     Headers["Accept"] = "accept";
     Headers["ContentType"] = "content-type";
-})(action_Headers || (action_Headers = {}));
+})(apply_version_Headers || (apply_version_Headers = {}));
 var MediaTypes;
 (function (MediaTypes) {
     MediaTypes["ApplicationJson"] = "application/json";
@@ -44382,7 +44381,7 @@ class lib_HttpClient {
      */
     getJson(requestUrl_1) {
         return __awaiter(this, arguments, void 0, function* (requestUrl, additionalHeaders = {}) {
-            additionalHeaders[action_Headers.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, action_Headers.Accept, MediaTypes.ApplicationJson);
+            additionalHeaders[apply_version_Headers.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, apply_version_Headers.Accept, MediaTypes.ApplicationJson);
             const res = yield this.get(requestUrl, additionalHeaders);
             return this._processResponse(res, this.requestOptions);
         });
@@ -44390,8 +44389,8 @@ class lib_HttpClient {
     postJson(requestUrl_1, obj_1) {
         return __awaiter(this, arguments, void 0, function* (requestUrl, obj, additionalHeaders = {}) {
             const data = JSON.stringify(obj, null, 2);
-            additionalHeaders[action_Headers.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, action_Headers.Accept, MediaTypes.ApplicationJson);
-            additionalHeaders[action_Headers.ContentType] =
+            additionalHeaders[apply_version_Headers.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, apply_version_Headers.Accept, MediaTypes.ApplicationJson);
+            additionalHeaders[apply_version_Headers.ContentType] =
                 this._getExistingOrDefaultContentTypeHeader(additionalHeaders, MediaTypes.ApplicationJson);
             const res = yield this.post(requestUrl, data, additionalHeaders);
             return this._processResponse(res, this.requestOptions);
@@ -44400,8 +44399,8 @@ class lib_HttpClient {
     putJson(requestUrl_1, obj_1) {
         return __awaiter(this, arguments, void 0, function* (requestUrl, obj, additionalHeaders = {}) {
             const data = JSON.stringify(obj, null, 2);
-            additionalHeaders[action_Headers.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, action_Headers.Accept, MediaTypes.ApplicationJson);
-            additionalHeaders[action_Headers.ContentType] =
+            additionalHeaders[apply_version_Headers.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, apply_version_Headers.Accept, MediaTypes.ApplicationJson);
+            additionalHeaders[apply_version_Headers.ContentType] =
                 this._getExistingOrDefaultContentTypeHeader(additionalHeaders, MediaTypes.ApplicationJson);
             const res = yield this.put(requestUrl, data, additionalHeaders);
             return this._processResponse(res, this.requestOptions);
@@ -44410,8 +44409,8 @@ class lib_HttpClient {
     patchJson(requestUrl_1, obj_1) {
         return __awaiter(this, arguments, void 0, function* (requestUrl, obj, additionalHeaders = {}) {
             const data = JSON.stringify(obj, null, 2);
-            additionalHeaders[action_Headers.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, action_Headers.Accept, MediaTypes.ApplicationJson);
-            additionalHeaders[action_Headers.ContentType] =
+            additionalHeaders[apply_version_Headers.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, apply_version_Headers.Accept, MediaTypes.ApplicationJson);
+            additionalHeaders[apply_version_Headers.ContentType] =
                 this._getExistingOrDefaultContentTypeHeader(additionalHeaders, MediaTypes.ApplicationJson);
             const res = yield this.patch(requestUrl, data, additionalHeaders);
             return this._processResponse(res, this.requestOptions);
@@ -44678,7 +44677,7 @@ class lib_HttpClient {
     _getExistingOrDefaultContentTypeHeader(additionalHeaders, _default) {
         let clientHeader;
         if (this.requestOptions && this.requestOptions.headers) {
-            const headerValue = lowercaseKeys(this.requestOptions.headers)[action_Headers.ContentType];
+            const headerValue = lowercaseKeys(this.requestOptions.headers)[apply_version_Headers.ContentType];
             if (headerValue) {
                 if (typeof headerValue === 'number') {
                     clientHeader = String(headerValue);
@@ -44691,7 +44690,7 @@ class lib_HttpClient {
                 }
             }
         }
-        const additionalValue = additionalHeaders[action_Headers.ContentType];
+        const additionalValue = additionalHeaders[apply_version_Headers.ContentType];
         // Return the first non-undefined value, converting numbers or arrays to strings if necessary
         if (additionalValue !== undefined) {
             if (typeof additionalValue === 'number') {
@@ -51337,14 +51336,14 @@ function readVersionFromFile(filePath) {
     return handler.read(filePath, content);
 }
 /** Writes a new version string into any supported version file in-place. */
-function version_files_writeVersionToFile(filePath, version) {
-    const basename = path.basename(filePath);
+function writeVersionToFile(filePath, version) {
+    const basename = external_node_path_default().basename(filePath);
     const handler = VERSION_FILE_HANDLERS[basename];
     if (!handler) {
         throw new Error(`Unsupported version file: ${basename}. ` +
             `Supported files: ${VERSION_FILE_CANDIDATES.join(', ')}.`);
     }
-    const content = fs.readFileSync(filePath, 'utf8');
+    const content = external_node_fs_default().readFileSync(filePath, 'utf8');
     handler.write(filePath, content, version);
 }
 
@@ -51407,10 +51406,10 @@ function upsertChangelogEntry(existingContent, entry, version) {
  * Writes a new changelog entry for `version` into the file at `changelogPath`.
  * Creates the file if it does not exist. Returns the markdown entry that was written.
  */
-function changelog_writeChangelogEntry(changelogPath, version, summary, changelog, date = formatDate()) {
-    const existingContent = fs.existsSync(changelogPath) ? fs.readFileSync(changelogPath, 'utf8') : '';
+function writeChangelogEntry(changelogPath, version, summary, changelog, date = formatDate()) {
+    const existingContent = external_node_fs_default().existsSync(changelogPath) ? external_node_fs_default().readFileSync(changelogPath, 'utf8') : '';
     const entry = createChangelogEntry(version, summary, changelog, date);
-    fs.writeFileSync(changelogPath, upsertChangelogEntry(existingContent, entry, version));
+    external_node_fs_default().writeFileSync(changelogPath, upsertChangelogEntry(existingContent, entry, version));
     return entry;
 }
 
@@ -51533,14 +51532,14 @@ function applyVersionRecommendation({ versionFilePath, changelogPath, baseVersio
     const nextVersion = calculateNextVersion(baseVersion, recommendation.bump);
     writeVersionToFile(versionFilePath, nextVersion);
     // Keep package-lock.json in sync for Node.js projects.
-    if (path.basename(versionFilePath) === 'package.json') {
-        const lockPath = path.join(path.dirname(versionFilePath), 'package-lock.json');
-        if (fs.existsSync(lockPath)) {
-            const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+    if (external_node_path_default().basename(versionFilePath) === 'package.json') {
+        const lockPath = external_node_path_default().join(external_node_path_default().dirname(versionFilePath), 'package-lock.json');
+        if (external_node_fs_default().existsSync(lockPath)) {
+            const lock = JSON.parse(external_node_fs_default().readFileSync(lockPath, 'utf8'));
             lock.version = nextVersion;
             if (lock.packages?.[''])
                 lock.packages[''].version = nextVersion;
-            fs.writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+            external_node_fs_default().writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
         }
     }
     const changelogEntry = writeChangelogEntry(changelogPath, nextVersion, recommendation.summary, recommendation.changelog, date);
@@ -51899,11 +51898,212 @@ if (process.argv[1] === (0,external_node_url_.fileURLToPath)(import.meta.url)) {
     void run();
 }
 
-var __webpack_exports__applyVersionLabel = __webpack_exports__.DV;
-var __webpack_exports__buildIgnoredPaths = __webpack_exports__.ly;
-var __webpack_exports__buildSummaryCommentBody = __webpack_exports__.Ui;
-var __webpack_exports__filterRelevantFiles = __webpack_exports__.nH;
-var __webpack_exports__loadBaseVersion = __webpack_exports__.GC;
-var __webpack_exports__postSummaryComment = __webpack_exports__.S$;
-var __webpack_exports__run = __webpack_exports__.eF;
-export { __webpack_exports__applyVersionLabel as applyVersionLabel, __webpack_exports__buildIgnoredPaths as buildIgnoredPaths, __webpack_exports__buildSummaryCommentBody as buildSummaryCommentBody, __webpack_exports__filterRelevantFiles as filterRelevantFiles, __webpack_exports__loadBaseVersion as loadBaseVersion, __webpack_exports__postSummaryComment as postSummaryComment, __webpack_exports__run as run };
+;// CONCATENATED MODULE: ./src/apply-version.ts
+
+
+
+
+
+
+
+
+
+
+
+const apply_version_SEMVER_LABELS = new Set(['patch', 'minor', 'major']);
+/**
+ * The bump a reviewer chose, when they overrode the recommendation.
+ *
+ * Swapping the label is the intended way to disagree with Claude: it is one
+ * click on the pull request, it happens before the merge, and it is visible in
+ * the pull request timeline. So when the label and the recorded recommendation
+ * disagree, the label is taken as deliberate and wins.
+ */
+function resolveBump(recorded, labels) {
+    const labelled = labels.map((label) => label.name).filter((name) => apply_version_SEMVER_LABELS.has(name));
+    // More than one semver label is ambiguous, so nothing is inferred from it.
+    if (labelled.length !== 1) {
+        return { bump: recorded, overridden: false };
+    }
+    const bump = labelled[0];
+    return { bump, overridden: bump !== recorded };
+}
+/**
+ * Puts the workspace on the current tip of `branch` before anything is read.
+ *
+ * The event that triggered this run is the merge, and `actions/checkout` may
+ * have materialised the pull request's merge ref rather than the branch itself.
+ * More importantly, the baseline version has to be read from the branch as it
+ * stands now — the whole point of doing this after the merge is that the
+ * previous release may have landed while this pull request was open.
+ */
+function checkoutBranchTip({ branch }) {
+    (0,external_node_child_process_.execFileSync)('git', ['fetch', '--no-tags', 'origin', branch], { stdio: 'inherit' });
+    // --force because an earlier build step in the same job may have left tracked
+    // files dirty, which would otherwise abort the checkout. Only the version file
+    // and the changelog are ever staged from here, so there is nothing to preserve.
+    (0,external_node_child_process_.execFileSync)('git', ['checkout', '--force', '-B', branch, 'FETCH_HEAD'], { stdio: 'inherit' });
+}
+/** Commits the version and changelog changes and pushes them. Returns the new sha, or null when nothing changed. */
+function commitAndPush({ branch, versionFilePath, changelogPath, message }) {
+    (0,external_node_child_process_.execFileSync)('git', ['config', 'user.name', 'github-actions[bot]']);
+    (0,external_node_child_process_.execFileSync)('git', ['config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com']);
+    const filesToStage = [versionFilePath, changelogPath];
+    if (external_node_path_default().basename(versionFilePath) === 'package.json') {
+        const lockPath = external_node_path_default().join(external_node_path_default().dirname(external_node_path_default().resolve(versionFilePath)), 'package-lock.json');
+        if (external_node_fs_default().existsSync(lockPath)) {
+            filesToStage.push(lockPath);
+        }
+    }
+    (0,external_node_child_process_.execFileSync)('git', ['add', ...filesToStage]);
+    const staged = (0,external_node_child_process_.execFileSync)('git', ['diff', '--cached', '--name-only'], { encoding: 'utf8' }).trim();
+    if (!staged) {
+        info('Version file and changelog are already up to date; nothing to commit.');
+        return null;
+    }
+    (0,external_node_child_process_.execFileSync)('git', ['commit', '-m', message], { stdio: 'inherit' });
+    try {
+        (0,external_node_child_process_.execFileSync)('git', ['push', 'origin', `HEAD:${branch}`], { stdio: 'inherit' });
+    }
+    catch (err) {
+        throw new Error(`Failed to push the version bump to ${branch}. Two causes are worth checking: the token needs to `
+            + `bypass any rule requiring a pull request on ${branch}, and a second release run may have pushed `
+            + 'first — set a `concurrency` group on this workflow so releases queue instead of racing. '
+            + `Underlying error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    return (0,external_node_child_process_.execFileSync)('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+}
+async function runApplyVersion() {
+    try {
+        const githubToken = getInput('github-token', { required: true });
+        const anthropicApiKey = getInput('anthropic-api-key');
+        const model = getInput('model') || 'claude-sonnet-4-5';
+        const changelogPath = (getInput('changelog-path') || 'CHANGELOG.md').replace(/^\.\//, '');
+        const targetBaseBranch = getInput('target-base-branch') || 'main';
+        const maxFiles = Number.parseInt(getInput('max-files') || '40', 10);
+        const versionFileInput = getInput('version-file-path').replace(/^\.\//, '');
+        const pullRequest = github_context.payload.pull_request;
+        if (!pullRequest) {
+            throw new Error('This action reads the merged pull request from the event payload, so it only supports '
+                + 'pull_request events. Trigger it with `on: pull_request: types: [closed]`.');
+        }
+        if (!pullRequest.merged) {
+            info('Skipping because the pull request was closed without merging.');
+            setOutput('skipped', 'true');
+            return;
+        }
+        if (pullRequest.base.ref !== targetBaseBranch) {
+            info(`Skipping because the pull request merged into ${String(pullRequest.base.ref)}, not ${targetBaseBranch}.`);
+            setOutput('skipped', 'true');
+            return;
+        }
+        const { owner, repo } = github_context.repo;
+        const octokit = getOctokit(githubToken);
+        const issueNumber = pullRequest.number;
+        checkoutBranchTip({ branch: targetBaseBranch });
+        const workdir = process.env.GITHUB_WORKSPACE ?? process.cwd();
+        const resolvedVersionFile = versionFileInput
+            ? external_node_path_default().resolve(workdir, versionFileInput)
+            : detectVersionFile(workdir);
+        const resolvedChangelogPath = external_node_path_default().resolve(workdir, changelogPath);
+        // Read the baseline off the branch as it stands now, not off the pull
+        // request's base. Those differ whenever another pull request merged while
+        // this one was open, and that difference is the bug this design removes.
+        const baseVersion = readVersionFromFile(resolvedVersionFile);
+        info(`Baseline version on ${targetBaseBranch}: ${baseVersion}`);
+        const comments = await octokit.paginate(octokit.rest.issues.listComments, {
+            owner,
+            repo,
+            issue_number: issueNumber,
+            per_page: 100
+        });
+        let recommendation = recoverRecommendation(comments);
+        if (recommendation) {
+            info('Recovered the recommendation recorded on the pull request; no analysis needed.');
+        }
+        else {
+            // Nothing recorded — a fork pull request, a failed analysis run, or a
+            // pull request merged before the workflow was installed. Re-analyse the
+            // merged diff, which GitHub still serves in full whatever the merge
+            // strategy collapsed it into on the branch.
+            info('No recommendation recorded on the pull request; re-analysing the merged diff.');
+            if (!anthropicApiKey) {
+                throw new Error(`No recommendation was recorded on pull request #${issueNumber} and no anthropic-api-key was `
+                    + 'supplied to fall back on. Pass anthropic-api-key so merges that skipped the pull request '
+                    + 'analysis can still be versioned.');
+            }
+            const filesToIgnore = buildIgnoredPaths(workdir, resolvedVersionFile, resolvedChangelogPath);
+            const allFiles = await octokit.paginate(octokit.rest.pulls.listFiles, {
+                owner,
+                repo,
+                pull_number: issueNumber,
+                per_page: 100
+            });
+            const relevantFiles = filterRelevantFiles(allFiles, filesToIgnore);
+            if (relevantFiles.length === 0) {
+                info('No code changes remain after ignoring version and changelog files; skipping the bump.');
+                setOutput('skipped', 'true');
+                return;
+            }
+            recommendation = await analyzePullRequest({
+                anthropic: new sdk/* default */.Ay({ apiKey: anthropicApiKey }),
+                model,
+                repositoryFullName: `${owner}/${repo}`,
+                baseRef: String(pullRequest.base.ref),
+                headRef: String(pullRequest.head.ref),
+                currentVersion: baseVersion,
+                pullRequest: {
+                    number: issueNumber,
+                    title: String(pullRequest.title),
+                    body: pullRequest.body
+                },
+                files: relevantFiles,
+                maxFiles
+            });
+        }
+        const { bump, overridden } = resolveBump(recommendation.bump, (pullRequest.labels ?? []));
+        if (overridden) {
+            info(`Label "${bump}" overrides the recommended "${recommendation.bump}" bump.`);
+        }
+        const result = applyVersionRecommendation({
+            versionFilePath: resolvedVersionFile,
+            changelogPath: resolvedChangelogPath,
+            baseVersion,
+            recommendation: { ...recommendation, bump }
+        });
+        const sha = commitAndPush({
+            branch: targetBaseBranch,
+            versionFilePath: external_node_path_default().relative(workdir, resolvedVersionFile),
+            changelogPath,
+            message: `chore: bump version to ${result.nextVersion} (#${issueNumber})`
+        });
+        setOutput('skipped', 'false');
+        setOutput('bump', bump);
+        setOutput('current-version', result.currentVersion);
+        setOutput('next-version', result.nextVersion);
+        setOutput('changelog-entry', result.changelogEntry);
+        setOutput('commit-sha', sha ?? github_context.sha);
+        await summary
+            .addHeading(`Bumped to ${result.nextVersion}`)
+            .addRaw(`${result.currentVersion} → ${result.nextVersion} (${bump}${overridden ? ', set by label' : ''})`)
+            .addBreak()
+            .addCodeBlock(result.changelogEntry.trim(), 'markdown')
+            .write();
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (error instanceof Error && error.stack) {
+            core_debug(error.stack);
+        }
+        setFailed(message);
+    }
+}
+if (process.argv[1] === (0,external_node_url_.fileURLToPath)(import.meta.url)) {
+    void runApplyVersion();
+}
+
+var __webpack_exports__checkoutBranchTip = __webpack_exports__.oU;
+var __webpack_exports__commitAndPush = __webpack_exports__.tk;
+var __webpack_exports__resolveBump = __webpack_exports__.X2;
+var __webpack_exports__runApplyVersion = __webpack_exports__.YS;
+export { __webpack_exports__checkoutBranchTip as checkoutBranchTip, __webpack_exports__commitAndPush as commitAndPush, __webpack_exports__resolveBump as resolveBump, __webpack_exports__runApplyVersion as runApplyVersion };

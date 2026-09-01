@@ -56,6 +56,7 @@ export async function runRelease(): Promise<void> {
     const tagPrefix = core.getInput('tag-prefix') || 'v';
     const draft = core.getBooleanInput('draft');
     const prerelease = core.getBooleanInput('prerelease');
+    const targetCommitish = core.getInput('target-commitish');
 
     const { owner, repo } = github.context.repo;
     const octokit = github.getOctokit(githubToken);
@@ -102,8 +103,10 @@ export async function runRelease(): Promise<void> {
       body: releaseNotes,
       draft,
       prerelease,
-      // Pin the release to the exact commit that triggered this run.
-      target_commitish: github.context.sha
+      // Pin the release to the commit whose tree actually carries this version.
+      // That is the triggering commit only when nothing was pushed since; a job
+      // that bumps the version first must pass the bump commit here instead.
+      target_commitish: targetCommitish || github.context.sha
     });
 
     core.setOutput('released', 'true');

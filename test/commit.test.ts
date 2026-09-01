@@ -4,19 +4,23 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { commitAndPushChanges } from '../src/action.js';
+import { checkoutBranchTip, commitAndPush, resolveBump } from '../src/apply-version.js';
+import { readVersionFromFile } from '../src/version-files.js';
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 }
 
 /**
- * Builds an origin repo with `main` ahead of a `feature` branch, then checks out
- * the merge of the two the way actions/checkout does for pull_request events.
- * Returns the workspace path plus the SHAs the assertions need.
+ * Builds an origin with `main` at 1.0.0, then clones a workspace detached at the
+ * merge ref the way actions/checkout does for a closed pull_request event.
+ *
+ * `advanceMain` pushes a second bump to origin/main after the workspace is
+ * cloned. That is the concurrent-merge case: the workspace is now stale, and the
+ * baseline has to come from the branch rather than from what was checked out.
  */
-function setupMergeCheckout() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agentic-semver-commit-'));
+function setupWorkspace({ advanceMain = false } = {}) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agentic-semver-apply-'));
   const origin = path.join(root, 'origin.git');
   const seed = path.join(root, 'seed');
   const workspace = path.join(root, 'workspace');
@@ -32,115 +36,191 @@ function setupMergeCheckout() {
   git(seed, 'commit', '-m', 'initial');
   git(seed, 'push', 'origin', 'main');
 
-  // Branch off, add a code change, push.
   git(seed, 'checkout', '-b', 'feature');
   fs.writeFileSync(path.join(seed, 'feature.txt'), 'feature work\n');
   git(seed, 'add', '.');
   git(seed, 'commit', '-m', 'feature work');
   git(seed, 'push', 'origin', 'feature');
-  const featureHead = git(seed, 'rev-parse', 'HEAD');
 
-  // main moves on, so the merge commit is genuinely different from the head.
-  git(seed, 'checkout', 'main');
-  fs.writeFileSync(path.join(seed, 'other.txt'), 'unrelated main change\n');
-  git(seed, 'add', '.');
-  git(seed, 'commit', '-m', 'unrelated main change');
-  git(seed, 'push', 'origin', 'main');
-
-  // Mimic actions/checkout for pull_request: detached HEAD at main merged with feature.
   execFileSync('git', ['clone', origin, workspace]);
   git(workspace, 'config', 'user.name', 'Runner');
   git(workspace, 'config', 'user.email', 'runner@example.com');
-  git(workspace, 'checkout', 'main');
   git(workspace, 'merge', '--no-ff', 'origin/feature', '-m', 'Merge feature into main');
   const mergeSha = git(workspace, 'rev-parse', 'HEAD');
   git(workspace, 'checkout', '--detach', mergeSha);
+  git(workspace, 'push', 'origin', `${mergeSha}:main`);
 
-  return { root, origin, workspace, featureHead, mergeSha };
+  if (advanceMain) {
+    git(seed, 'checkout', 'main');
+    git(seed, 'pull', '--ff-only');
+    fs.writeFileSync(path.join(seed, 'package.json'), '{\n  "version": "1.1.0"\n}\n');
+    git(seed, 'add', '.');
+    git(seed, 'commit', '-m', 'chore: bump version to 1.1.0 (#1)');
+    git(seed, 'push', 'origin', 'main');
+  }
+
+  return { root, origin, workspace, mergeSha };
 }
 
-test('commitAndPushChanges commits onto the PR head, not the merge commit', () => {
-  const { root, origin, workspace, featureHead, mergeSha } = setupMergeCheckout();
+function inWorkspace<T>(workspace: string, fn: () => T): T {
   const cwd = process.cwd();
+  process.chdir(workspace);
+  try {
+    return fn();
+  } finally {
+    process.chdir(cwd);
+  }
+}
+
+test('commitAndPush lands the bump on the base branch', () => {
+  const { root, origin, workspace } = setupWorkspace();
 
   try {
-    // Stand in for applyVersionRecommendation having written the workspace files.
-    fs.writeFileSync(path.join(workspace, 'package.json'), '{\n  "version": "1.1.0"\n}\n');
-    fs.writeFileSync(path.join(workspace, 'CHANGELOG.md'), '# Changelog\n\n## 1.1.0 - 2026-01-01\n\n- Summary: test\n');
+    inWorkspace(workspace, () => {
+      checkoutBranchTip({ branch: 'main' });
+      fs.writeFileSync('package.json', '{\n  "version": "1.1.0"\n}\n');
+      fs.writeFileSync('CHANGELOG.md', '# Changelog\n\n## 1.1.0 - 2026-01-01\n\n- Summary: test\n');
 
-    process.chdir(workspace);
-    const pushed = commitAndPushChanges({
-      pullRequest: { head: { ref: 'feature' } },
-      versionFilePath: 'package.json',
-      changelogPath: 'CHANGELOG.md',
-      nextVersion: '1.1.0'
+      const sha = commitAndPush({
+        branch: 'main',
+        versionFilePath: 'package.json',
+        changelogPath: 'CHANGELOG.md',
+        message: 'chore: bump version to 1.1.0 (#1)'
+      });
+
+      assert.equal(sha, git(origin, 'rev-parse', 'main'));
     });
-    assert.equal(pushed, true);
 
-    const tip = git(origin, 'rev-parse', 'feature');
-    const parents = git(origin, 'log', '-1', '--format=%P', tip).split(' ');
+    const tip = git(origin, 'rev-parse', 'main');
+    assert.equal(git(origin, 'log', '-1', '--format=%s', tip), 'chore: bump version to 1.1.0 (#1)');
 
-    assert.deepEqual(parents, [featureHead], 'bump commit must sit directly on the PR head');
-    assert.notEqual(tip, mergeSha);
-    assert.equal(
-      git(origin, 'log', '--format=%H', 'feature').includes(mergeSha),
-      false,
-      'the merge commit must not reach the contributor branch'
-    );
-
-    // Only version metadata should have moved; main's unrelated file must not ride along.
+    // Only version metadata moves. That is what makes it reasonable to let this
+    // commit bypass the checks that guard the code it describes.
     const changed = git(origin, 'show', '--name-only', '--format=', tip).split('\n').filter(Boolean).sort();
     assert.deepEqual(changed, ['CHANGELOG.md', 'package.json']);
   } finally {
-    process.chdir(cwd);
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
-test('commitAndPushChanges writes a plain bump subject with no CI-skip token', () => {
-  const { root, origin, workspace } = setupMergeCheckout();
-  const cwd = process.cwd();
+// The bug the post-merge design exists to remove: two pull requests open at once
+// both read 1.0.0 off main and both predict 1.1.0. Reading the baseline after
+// checking out the branch tip is what makes the second one compute 1.2.0.
+test('checkoutBranchTip picks up a version another merge already pushed', () => {
+  const { root, workspace } = setupWorkspace({ advanceMain: true });
 
   try {
-    fs.writeFileSync(path.join(workspace, 'package.json'), '{\n  "version": "1.1.0"\n}\n');
-    fs.writeFileSync(path.join(workspace, 'CHANGELOG.md'), '# Changelog\n\n## 1.1.0 - 2026-01-01\n\n- Summary: test\n');
-
-    process.chdir(workspace);
-    commitAndPushChanges({
-      pullRequest: { head: { ref: 'feature' } },
-      versionFilePath: 'package.json',
-      changelogPath: 'CHANGELOG.md',
-      nextVersion: '1.1.0'
+    inWorkspace(workspace, () => {
+      assert.equal(readVersionFromFile(path.join(workspace, 'package.json')), '1.0.0', 'checkout starts stale');
+      checkoutBranchTip({ branch: 'main' });
+      assert.equal(readVersionFromFile(path.join(workspace, 'package.json')), '1.1.0', 'baseline follows the branch');
     });
-
-    const subject = git(origin, 'log', '-1', '--format=%s', 'feature');
-    assert.equal(subject, 'chore: bump version to 1.1.0');
-    // A skip token here would suppress the run that reports required status checks.
-    assert.equal(/\[(skip ci|ci skip|skip actions|actions skip|no ci)\]/i.test(subject), false);
   } finally {
-    process.chdir(cwd);
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
-test('commitAndPushChanges reports no push when the files are already current', () => {
-  const { root, origin, workspace } = setupMergeCheckout();
-  const cwd = process.cwd();
+test('checkoutBranchTip leaves the workspace on the branch, not a merge ref', () => {
+  const { root, workspace } = setupWorkspace();
 
   try {
-    process.chdir(workspace);
-    const before = git(origin, 'rev-parse', 'feature');
-    const pushed = commitAndPushChanges({
-      pullRequest: { head: { ref: 'feature' } },
-      versionFilePath: 'package.json',
-      changelogPath: 'CHANGELOG.md',
-      nextVersion: '1.0.0'
+    inWorkspace(workspace, () => {
+      checkoutBranchTip({ branch: 'main' });
+      assert.equal(git(workspace, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main');
+    });
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('commitAndPush reports nothing to do when the files are already current', () => {
+  const { root, origin, workspace } = setupWorkspace();
+
+  try {
+    const before = git(origin, 'rev-parse', 'main');
+
+    inWorkspace(workspace, () => {
+      checkoutBranchTip({ branch: 'main' });
+      const sha = commitAndPush({
+        branch: 'main',
+        versionFilePath: 'package.json',
+        changelogPath: 'CHANGELOG.md',
+        message: 'chore: bump version to 1.0.0 (#1)'
+      });
+      assert.equal(sha, null);
     });
 
-    assert.equal(pushed, false);
-    assert.equal(git(origin, 'rev-parse', 'feature'), before);
+    assert.equal(git(origin, 'rev-parse', 'main'), before, 'origin must be untouched');
   } finally {
-    process.chdir(cwd);
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('commitAndPush keeps package-lock.json in step with package.json', () => {
+  const { root, origin, workspace } = setupWorkspace();
+
+  try {
+    inWorkspace(workspace, () => {
+      checkoutBranchTip({ branch: 'main' });
+      fs.writeFileSync('package.json', '{\n  "version": "1.1.0"\n}\n');
+      fs.writeFileSync('package-lock.json', '{\n  "version": "1.1.0"\n}\n');
+      fs.writeFileSync('CHANGELOG.md', '# Changelog\n\n## 1.1.0 - 2026-01-01\n\n- Summary: test\n');
+
+      commitAndPush({
+        branch: 'main',
+        versionFilePath: 'package.json',
+        changelogPath: 'CHANGELOG.md',
+        message: 'chore: bump version to 1.1.0 (#1)'
+      });
+    });
+
+    const changed = git(origin, 'show', '--name-only', '--format=', 'main').split('\n').filter(Boolean).sort();
+    assert.deepEqual(changed, ['CHANGELOG.md', 'package-lock.json', 'package.json']);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('resolveBump keeps the recorded bump when the label agrees', () => {
+  assert.deepEqual(resolveBump('minor', [{ name: 'minor' }]), { bump: 'minor', overridden: false });
+});
+
+test('resolveBump lets a reviewer override the recommendation by relabelling', () => {
+  assert.deepEqual(resolveBump('minor', [{ name: 'major' }]), { bump: 'major', overridden: true });
+});
+
+test('resolveBump ignores labels that are not semver bumps', () => {
+  assert.deepEqual(
+    resolveBump('patch', [{ name: 'documentation' }, { name: 'needs-review' }]),
+    { bump: 'patch', overridden: false }
+  );
+});
+
+test('resolveBump falls back to the recording when no label is present', () => {
+  assert.deepEqual(resolveBump('major', []), { bump: 'major', overridden: false });
+});
+
+// Two semver labels express no decision, so the recorded recommendation stands
+// rather than one of them being picked arbitrarily.
+test('resolveBump ignores an ambiguous pair of semver labels', () => {
+  assert.deepEqual(
+    resolveBump('patch', [{ name: 'major' }, { name: 'minor' }]),
+    { bump: 'patch', overridden: false }
+  );
+});
+
+// A build step earlier in the same job can leave tracked files dirty, which would
+// otherwise abort the checkout and fail the release.
+test('checkoutBranchTip succeeds when an earlier step dirtied a tracked file', () => {
+  const { root, workspace } = setupWorkspace({ advanceMain: true });
+
+  try {
+    inWorkspace(workspace, () => {
+      fs.writeFileSync(path.join(workspace, 'package.json'), '{\n  "version": "9.9.9"\n}\n');
+      checkoutBranchTip({ branch: 'main' });
+      assert.equal(readVersionFromFile(path.join(workspace, 'package.json')), '1.1.0');
+    });
+  } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
