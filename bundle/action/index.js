@@ -43888,25 +43888,12 @@ class ToolError extends Error {
 /************************************************************************/
 var __webpack_exports__ = {};
 
-// EXPORTS
-__nccwpck_require__.d(__webpack_exports__, {
-  DV: () => (/* binding */ applyVersionLabel),
-  ly: () => (/* binding */ buildIgnoredPaths),
-  Ui: () => (/* binding */ buildSummaryCommentBody),
-  nH: () => (/* binding */ filterRelevantFiles),
-  GC: () => (/* binding */ loadBaseVersion),
-  S$: () => (/* binding */ postSummaryComment),
-  eF: () => (/* binding */ run)
-});
-
 // EXTERNAL MODULE: external "node:fs"
 var external_node_fs_ = __nccwpck_require__(3024);
 var external_node_fs_default = /*#__PURE__*/__nccwpck_require__.n(external_node_fs_);
 // EXTERNAL MODULE: external "node:path"
 var external_node_path_ = __nccwpck_require__(6760);
 var external_node_path_default = /*#__PURE__*/__nccwpck_require__.n(external_node_path_);
-// EXTERNAL MODULE: external "node:url"
-var external_node_url_ = __nccwpck_require__(3136);
 ;// CONCATENATED MODULE: external "os"
 const external_os_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("os");
 ;// CONCATENATED MODULE: ./node_modules/@actions/core/lib/utils.js
@@ -51641,6 +51628,41 @@ function recoverRecommendation(comments) {
     return recovered;
 }
 
+;// CONCATENATED MODULE: ./src/diff-filter.ts
+/**
+ * diff-filter.ts
+ *
+ * Selecting the files worth showing Claude. Shared by the pull request action
+ * and the post-merge fallback analysis.
+ *
+ * These live apart from either action on purpose. Both actions are bundled
+ * separately, and anything one imports from the other is dragged wholesale into
+ * its bundle — so a helper shared through an action module pulls that action's
+ * entire entry path along with it.
+ */
+
+/**
+ * Paths to drop from the diff before asking Claude to classify it.
+ *
+ * These are all files this action writes itself, so feeding them back in would
+ * be scoring our own output as if it were user code. Returned relative to
+ * `workdir` to match the `filename` values GitHub reports for a pull request.
+ */
+function buildIgnoredPaths(workdir, versionFilePath, changelogPath) {
+    const ignored = [versionFilePath, changelogPath];
+    // applyVersionRecommendation keeps package-lock.json in step with package.json,
+    // so the lockfile diff is ours too — and a dependency-free version bump still
+    // shows up there as a change.
+    if (external_node_path_default().basename(versionFilePath) === 'package.json') {
+        ignored.push(external_node_path_default().join(external_node_path_default().dirname(versionFilePath), 'package-lock.json'));
+    }
+    return ignored.map((filePath) => external_node_path_default().relative(workdir, filePath));
+}
+function filterRelevantFiles(files, ignoredPaths) {
+    const ignored = new Set(ignoredPaths.map((filePath) => filePath.replace(/^\.\//, '')));
+    return files.filter((file) => !ignored.has(file.filename));
+}
+
 ;// CONCATENATED MODULE: ./src/action.ts
 
 
@@ -51649,6 +51671,8 @@ function recoverRecommendation(comments) {
 
 
 
+
+// Re-exported so the pull request action stays the single import site for its tests.
 
 
 async function loadBaseVersion(octokit, { owner, repo, baseRef, versionFilePath, fallbackVersion }) {
@@ -51687,27 +51711,6 @@ async function loadBaseVersion(octokit, { owner, repo, baseRef, versionFilePath,
         }
         throw error;
     }
-}
-/**
- * Paths to drop from the diff before asking Claude to classify it.
- *
- * These are all files this action writes itself, so feeding them back in would
- * be scoring our own output as if it were user code. Returned relative to
- * `workdir` to match the `filename` values GitHub reports for a pull request.
- */
-function buildIgnoredPaths(workdir, versionFilePath, changelogPath) {
-    const ignored = [versionFilePath, changelogPath];
-    // applyVersionRecommendation keeps package-lock.json in step with package.json,
-    // so the lockfile diff is ours too — and a dependency-free version bump still
-    // shows up there as a change.
-    if (external_node_path_default().basename(versionFilePath) === 'package.json') {
-        ignored.push(external_node_path_default().join(external_node_path_default().dirname(versionFilePath), 'package-lock.json'));
-    }
-    return ignored.map((filePath) => external_node_path_default().relative(workdir, filePath));
-}
-function filterRelevantFiles(files, ignoredPaths) {
-    const ignored = new Set(ignoredPaths.map((filePath) => filePath.replace(/^\.\//, '')));
-    return files.filter((file) => !ignored.has(file.filename));
 }
 const LABEL_COLORS = {
     major: 'e11d48',
@@ -51895,15 +51898,17 @@ async function run() {
         setFailed(message);
     }
 }
-if (process.argv[1] === (0,external_node_url_.fileURLToPath)(import.meta.url)) {
-    void run();
-}
 
-var __webpack_exports__applyVersionLabel = __webpack_exports__.DV;
-var __webpack_exports__buildIgnoredPaths = __webpack_exports__.ly;
-var __webpack_exports__buildSummaryCommentBody = __webpack_exports__.Ui;
-var __webpack_exports__filterRelevantFiles = __webpack_exports__.nH;
-var __webpack_exports__loadBaseVersion = __webpack_exports__.GC;
-var __webpack_exports__postSummaryComment = __webpack_exports__.S$;
-var __webpack_exports__run = __webpack_exports__.eF;
-export { __webpack_exports__applyVersionLabel as applyVersionLabel, __webpack_exports__buildIgnoredPaths as buildIgnoredPaths, __webpack_exports__buildSummaryCommentBody as buildSummaryCommentBody, __webpack_exports__filterRelevantFiles as filterRelevantFiles, __webpack_exports__loadBaseVersion as loadBaseVersion, __webpack_exports__postSummaryComment as postSummaryComment, __webpack_exports__run as run };
+;// CONCATENATED MODULE: ./src/entry/action.ts
+/**
+ * Bundle entry point for the pull request action.
+ *
+ * Each action gets a file whose only job is to invoke its run function. The
+ * modules themselves stay side-effect free, because ncc collapses every module
+ * it bundles into one file with one `import.meta.url` — so a `process.argv[1]
+ * === import.meta.url` guard inside a shared module fires in every bundle that
+ * transitively imports it, not just its own.
+ */
+
+void run();
+

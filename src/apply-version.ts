@@ -1,7 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import * as core from '@actions/core';
 import * as github from '@actions/github';
 import Anthropic from '@anthropic-ai/sdk';
@@ -12,7 +11,7 @@ import {
   type BumpType
 } from './index.js';
 import { recoverRecommendation } from './metadata.js';
-import { buildIgnoredPaths, filterRelevantFiles } from './action.js';
+import { buildIgnoredPaths, filterRelevantFiles } from './diff-filter.js';
 import { detectVersionFile, readVersionFromFile } from './version-files.js';
 
 const SEMVER_LABELS = new Set<string>(['patch', 'minor', 'major']);
@@ -38,6 +37,28 @@ export function resolveBump(
 
   const bump = labelled[0] as BumpType;
   return { bump, overridden: bump !== recorded };
+}
+
+/** Subject this action gives its own bump commits. */
+export function bumpCommitSubject(version: string, pullNumber: number): string {
+  return `chore: bump version to ${version} (#${pullNumber})`;
+}
+
+/**
+ * The version this action already applied for `pullNumber`, or null.
+ *
+ * The push happens before the tag, the release, and the publish, so a failure in
+ * any of those leaves a pushed bump and a red job. Re-running that job has to
+ * finish the release rather than bump a second time — without this check a retry
+ * reads the version it just wrote as the new baseline and increments past it.
+ */
+export function findAppliedBump(headSubject: string, pullNumber: number): string | null {
+  const match = /^chore: bump version to (\S+) \(#(\d+)\)$/.exec(headSubject.trim());
+  if (!match || Number(match[2]) !== pullNumber) {
+    return null;
+  }
+
+  return match[1];
 }
 
 interface CheckoutParams {
@@ -152,6 +173,20 @@ export async function runApplyVersion(): Promise<void> {
     const baseVersion = readVersionFromFile(resolvedVersionFile);
     core.info(`Baseline version on ${targetBaseBranch}: ${baseVersion}`);
 
+    // Already applied for this pull request — a previous run pushed the bump and
+    // then something after it failed. Report what is on the branch so the release
+    // steps can finish, and touch nothing.
+    const headSubject = execFileSync('git', ['log', '-1', '--format=%s'], { encoding: 'utf8' });
+    const alreadyApplied = findAppliedBump(headSubject, issueNumber);
+    if (alreadyApplied) {
+      core.info(`Version ${alreadyApplied} was already applied for #${issueNumber}; not bumping again.`);
+      core.setOutput('skipped', 'false');
+      core.setOutput('current-version', alreadyApplied);
+      core.setOutput('next-version', alreadyApplied);
+      core.setOutput('commit-sha', execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim());
+      return;
+    }
+
     const comments = await octokit.paginate(octokit.rest.issues.listComments, {
       owner,
       repo,
@@ -230,7 +265,7 @@ export async function runApplyVersion(): Promise<void> {
       branch: targetBaseBranch,
       versionFilePath: path.relative(workdir, resolvedVersionFile),
       changelogPath,
-      message: `chore: bump version to ${result.nextVersion} (#${issueNumber})`
+      message: bumpCommitSubject(result.nextVersion, issueNumber)
     });
 
     core.setOutput('skipped', 'false');
@@ -253,8 +288,4 @@ export async function runApplyVersion(): Promise<void> {
     }
     core.setFailed(message);
   }
-}
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  void runApplyVersion();
 }

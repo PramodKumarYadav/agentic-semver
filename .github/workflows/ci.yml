@@ -44,3 +44,30 @@ jobs:
             exit 1
           fi
           echo "bundle/ is up to date."
+
+      # Each action is bundled separately, and ncc collapses every module it
+      # bundles into one file sharing one import.meta.url. A cross-import between
+      # two action modules therefore lands both entry paths in one bundle — which
+      # once meant the post-merge action ran the pull request action too, read an
+      # input it was never given, and failed a step whose work had succeeded.
+      - name: Verify the action bundles stay separate
+        run: |
+          fail=0
+          check() {
+            if grep -q "$2" "bundle/$1/index.js"; then
+              echo "::error::bundle/$1 contains $3. Move the shared code into a module that imports no action."
+              fail=1
+            fi
+          }
+          check apply-version "comment-summary" "the pull request action"
+          check release "comment-summary" "the pull request action"
+          check action "Baseline version on" "the apply-version action"
+          for d in action apply-version release; do
+            count=$(grep -c "^void " "bundle/$d/index.js" || true)
+            if [ "$count" != "1" ]; then
+              echo "::error::bundle/$d has $count top-level invocations, expected exactly 1."
+              fail=1
+            fi
+          done
+          [ "$fail" = "0" ] && echo "Bundles are separate, one entry point each."
+          exit $fail
