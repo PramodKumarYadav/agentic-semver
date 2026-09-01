@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import * as core from '@actions/core';
 import * as github from '@actions/github';
 import { detectVersionFile, readVersionFromFile } from './version-files.js';
@@ -125,8 +124,4 @@ export async function runRelease(): Promise<void> {
     }
     core.setFailed(message);
   }
-}
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  void runRelease();
 }

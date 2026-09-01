@@ -15,7 +15,7 @@
   ],
   "scripts": {
     "build": "tsc && npm run bundle",
-    "bundle": "ncc build src/action.ts -o bundle/action && ncc build src/apply-version.ts -o bundle/apply-version && ncc build src/release.ts -o bundle/release && node scripts/clean-bundle.mjs bundle/action bundle/apply-version bundle/release",
+    "bundle": "ncc build src/entry/action.ts -o bundle/action && ncc build src/entry/apply-version.ts -o bundle/apply-version && ncc build src/entry/release.ts -o bundle/release && node scripts/clean-bundle.mjs bundle/action bundle/apply-version bundle/release",
     "test": "node --import tsx --test test/*.test.ts"
   },
   "keywords": [

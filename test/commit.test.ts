@@ -4,7 +4,13 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { checkoutBranchTip, commitAndPush, resolveBump } from '../src/apply-version.js';
+import {
+  checkoutBranchTip,
+  commitAndPush,
+  resolveBump,
+  findAppliedBump,
+  bumpCommitSubject
+} from '../src/apply-version.js';
 import { readVersionFromFile } from '../src/version-files.js';
 
 function git(cwd: string, ...args: string[]): string {
@@ -223,4 +229,29 @@ test('checkoutBranchTip succeeds when an earlier step dirtied a tracked file', (
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('findAppliedBump recognises a bump this action already pushed for the PR', () => {
+  assert.equal(findAppliedBump('chore: bump version to 2.0.0 (#24)', 24), '2.0.0');
+});
+
+// Without this the retry reads 2.0.0 as its baseline and ships 3.0.0.
+test('findAppliedBump ignores a bump belonging to a different pull request', () => {
+  assert.equal(findAppliedBump('chore: bump version to 2.0.0 (#23)', 24), null);
+});
+
+test('findAppliedBump ignores an ordinary commit', () => {
+  assert.equal(findAppliedBump('feat: add a thing', 24), null);
+});
+
+test('findAppliedBump ignores a subject that merely mentions a bump', () => {
+  assert.equal(findAppliedBump('docs: explain chore: bump version to 2.0.0 (#24)', 24), null);
+});
+
+test('findAppliedBump tolerates trailing whitespace from git log', () => {
+  assert.equal(findAppliedBump('chore: bump version to 2.0.0 (#24)\n', 24), '2.0.0');
+});
+
+test('bumpCommitSubject round-trips through findAppliedBump', () => {
+  assert.equal(findAppliedBump(bumpCommitSubject('3.1.4', 99), 99), '3.1.4');
 });

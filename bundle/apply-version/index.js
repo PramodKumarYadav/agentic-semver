@@ -32232,13 +32232,6 @@ module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:net");
 
 /***/ }),
 
-/***/ 8161:
-/***/ ((module) => {
-
-module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:os");
-
-/***/ }),
-
 /***/ 6760:
 /***/ ((module) => {
 
@@ -43888,14 +43881,6 @@ class ToolError extends Error {
 /************************************************************************/
 var __webpack_exports__ = {};
 
-// EXPORTS
-__nccwpck_require__.d(__webpack_exports__, {
-  oU: () => (/* binding */ checkoutBranchTip),
-  tk: () => (/* binding */ commitAndPush),
-  X2: () => (/* binding */ resolveBump),
-  YS: () => (/* binding */ runApplyVersion)
-});
-
 // EXTERNAL MODULE: external "node:child_process"
 var external_node_child_process_ = __nccwpck_require__(1421);
 // EXTERNAL MODULE: external "node:fs"
@@ -43904,8 +43889,6 @@ var external_node_fs_default = /*#__PURE__*/__nccwpck_require__.n(external_node_
 // EXTERNAL MODULE: external "node:path"
 var external_node_path_ = __nccwpck_require__(6760);
 var external_node_path_default = /*#__PURE__*/__nccwpck_require__.n(external_node_path_);
-// EXTERNAL MODULE: external "node:url"
-var external_node_url_ = __nccwpck_require__(3136);
 ;// CONCATENATED MODULE: external "os"
 const external_os_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("os");
 ;// CONCATENATED MODULE: ./node_modules/@actions/core/lib/utils.js
@@ -46749,7 +46732,7 @@ function error(message, properties = {}) {
  * @param properties optional properties to add to the annotation.
  */
 function warning(message, properties = {}) {
-    command_issueCommand('warning', utils_toCommandProperties(properties), message instanceof Error ? message.toString() : message);
+    issueCommand('warning', toCommandProperties(properties), message instanceof Error ? message.toString() : message);
 }
 /**
  * Adds a notice issue
@@ -51378,7 +51361,7 @@ function createChangelogEntry(version, summary, changelog, date) {
  * The pull request run shows a reviewer the entry it recommends but must not
  * write it — the version in the heading is a prediction until the merge lands.
  */
-function renderChangelogEntry(version, summary, changelog, date = formatDate()) {
+function changelog_renderChangelogEntry(version, summary, changelog, date = formatDate()) {
     return createChangelogEntry(version, summary, changelog, date);
 }
 /**
@@ -51640,53 +51623,19 @@ function recoverRecommendation(comments) {
     return recovered;
 }
 
-;// CONCATENATED MODULE: ./src/action.ts
+;// CONCATENATED MODULE: ./src/diff-filter.ts
+/**
+ * diff-filter.ts
+ *
+ * Selecting the files worth showing Claude. Shared by the pull request action
+ * and the post-merge fallback analysis.
+ *
+ * These live apart from either action on purpose. Both actions are bundled
+ * separately, and anything one imports from the other is dragged wholesale into
+ * its bundle — so a helper shared through an action module pulls that action's
+ * entire entry path along with it.
+ */
 
-
-
-
-
-
-
-
-
-async function loadBaseVersion(octokit, { owner, repo, baseRef, versionFilePath, fallbackVersion }) {
-    try {
-        const response = await octokit.rest.repos.getContent({ owner, repo, path: versionFilePath, ref: baseRef });
-        const data = response.data;
-        if (!('content' in data)) {
-            return fallbackVersion;
-        }
-        const decoded = Buffer.from(data.content, 'base64').toString('utf8');
-        const basename = external_node_path_default().basename(versionFilePath);
-        if (basename === 'package.json') {
-            const parsed = JSON.parse(decoded);
-            return parsed.version ?? fallbackVersion;
-        }
-        // For other version files, write to a unique temp file and use readVersionFromFile.
-        const os = await Promise.resolve(/* import() */).then(__nccwpck_require__.t.bind(__nccwpck_require__, 8161, 23));
-        const tmpDir = external_node_fs_default().mkdtempSync(external_node_path_default().join(os.tmpdir(), 'agentic-semver-'));
-        const tmpFile = external_node_path_default().join(tmpDir, basename);
-        external_node_fs_default().writeFileSync(tmpFile, decoded);
-        try {
-            return readVersionFromFile(tmpFile);
-        }
-        catch {
-            return fallbackVersion;
-        }
-        finally {
-            external_node_fs_default().rmSync(tmpDir, { recursive: true, force: true });
-        }
-    }
-    catch (error) {
-        const err = error;
-        if (err.status === 404) {
-            info(`No ${versionFilePath} found on ${baseRef}; using the workspace version as the baseline.`);
-            return fallbackVersion;
-        }
-        throw error;
-    }
-}
 /**
  * Paths to drop from the diff before asking Claude to classify it.
  *
@@ -51708,195 +51657,6 @@ function filterRelevantFiles(files, ignoredPaths) {
     const ignored = new Set(ignoredPaths.map((filePath) => filePath.replace(/^\.\//, '')));
     return files.filter((file) => !ignored.has(file.filename));
 }
-const LABEL_COLORS = {
-    major: 'e11d48',
-    minor: '3b82f6',
-    patch: '22c55e'
-};
-const SEMVER_LABELS = new Set(Object.keys(LABEL_COLORS));
-async function applyVersionLabel(octokit, { owner, repo, issueNumber, bump }) {
-    if (!SEMVER_LABELS.has(bump)) {
-        throw new Error(`Cannot apply label: "${bump}" is not a recognised semver bump type.`);
-    }
-    const color = LABEL_COLORS[bump];
-    // Ensure the label exists with the right colour — fall back to create only on 404.
-    try {
-        await octokit.rest.issues.updateLabel({ owner, repo, name: bump, color, description: `Semver ${bump} change` });
-    }
-    catch (err) {
-        const status = err.status;
-        if (status !== 404)
-            throw err;
-        await octokit.rest.issues.createLabel({ owner, repo, name: bump, color, description: `Semver ${bump} change` });
-    }
-    // Remove any other semver labels already on the PR.
-    const { data: currentLabels } = await octokit.rest.issues.listLabelsOnIssue({ owner, repo, issue_number: issueNumber });
-    for (const label of currentLabels) {
-        if (SEMVER_LABELS.has(label.name) && label.name !== bump) {
-            await octokit.rest.issues.removeLabel({ owner, repo, issue_number: issueNumber, name: label.name });
-        }
-    }
-    // Apply the new label.
-    await octokit.rest.issues.addLabels({ owner, repo, issue_number: issueNumber, labels: [bump] });
-    info(`Applied label "${bump}" to PR #${issueNumber}.`);
-}
-function buildSummaryCommentBody({ result, recommendation, verbose }) {
-    const metadata = serializeMetadata(recommendation);
-    if (!verbose) {
-        // `comment-summary: false` suppresses the write-up, not the handoff. The
-        // release run reads the recommendation back out of this comment, so a
-        // comment always gets posted — this is the smallest one that still carries it.
-        return [`Agentic semver: recommending a **${recommendation.bump}** bump.`, '', metadata].join('\n');
-    }
-    return [
-        '## Agentic semver update',
-        '',
-        `- Recommended bump: **${recommendation.bump}**`,
-        `- Current version: **${result.currentVersion}**`,
-        `- Next version: **${result.nextVersion}** (provisional — settled when this merges)`,
-        '',
-        result.changelogEntry.trim(),
-        '',
-        '<sub>Nothing is committed to this branch. The version file and changelog are written to '
-            + '`main` after merge, from the bump recorded here. Change the recommendation by swapping '
-            + 'the `major` / `minor` / `patch` label on this pull request — the label wins.</sub>',
-        '',
-        metadata
-    ].join('\n');
-}
-async function postSummaryComment(octokit, { owner, repo, issueNumber, result, recommendation, verbose = true }) {
-    const body = buildSummaryCommentBody({ result, recommendation, verbose });
-    await octokit.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body });
-}
-async function run() {
-    try {
-        const githubToken = getInput('github-token', { required: true });
-        const anthropicApiKey = getInput('anthropic-api-key', { required: true });
-        const model = getInput('model') || 'claude-sonnet-4-5';
-        const changelogPath = (getInput('changelog-path') || 'CHANGELOG.md').replace(/^\.\//, '');
-        const targetBaseBranch = getInput('target-base-branch') || 'main';
-        const maxFiles = Number.parseInt(getInput('max-files') || '40', 10);
-        const commentSummary = getBooleanInput('comment-summary');
-        const applyLabel = getBooleanInput('apply-label');
-        const versionFileInput = getInput('version-file-path').replace(/^\.\//, '');
-        const pullRequest = github_context.payload.pull_request;
-        if (!pullRequest) {
-            throw new Error('This action only supports pull_request events.');
-        }
-        if (pullRequest.base.ref !== targetBaseBranch) {
-            info(`Skipping analysis because the pull request targets ${String(pullRequest.base.ref)}, not ${targetBaseBranch}.`);
-            setOutput('skipped', 'true');
-            return;
-        }
-        const { owner, repo } = github_context.repo;
-        const octokit = getOctokit(githubToken);
-        // Resolve which version file to use. Explicit input beats auto-detect.
-        const workdir = process.env.GITHUB_WORKSPACE ?? process.cwd();
-        const resolvedVersionFile = versionFileInput
-            ? external_node_path_default().resolve(workdir, versionFileInput)
-            : detectVersionFile(workdir);
-        info(`Using version file: ${resolvedVersionFile}`);
-        const workspaceVersion = readVersionFromFile(resolvedVersionFile);
-        const baseVersion = await loadBaseVersion(octokit, {
-            owner,
-            repo,
-            baseRef: String(pullRequest.base.ref),
-            versionFilePath: external_node_path_default().relative(workdir, resolvedVersionFile),
-            fallbackVersion: workspaceVersion
-        });
-        const resolvedChangelogPath = external_node_path_default().resolve(workdir, changelogPath);
-        const filesToIgnore = buildIgnoredPaths(workdir, resolvedVersionFile, resolvedChangelogPath);
-        const allFiles = await octokit.paginate(octokit.rest.pulls.listFiles, {
-            owner,
-            repo,
-            pull_number: pullRequest.number,
-            per_page: 100
-        });
-        const relevantFiles = filterRelevantFiles(allFiles, filesToIgnore);
-        if (relevantFiles.length === 0) {
-            info('No code changes remain after ignoring version and changelog files; skipping version recommendation.');
-            setOutput('skipped', 'true');
-            return;
-        }
-        const anthropic = new sdk/* default */.Ay({ apiKey: anthropicApiKey });
-        const recommendation = await analyzePullRequest({
-            anthropic,
-            model,
-            repositoryFullName: `${owner}/${repo}`,
-            baseRef: String(pullRequest.base.ref),
-            headRef: String(pullRequest.head.ref),
-            currentVersion: baseVersion,
-            pullRequest: {
-                number: pullRequest.number,
-                title: String(pullRequest.title),
-                body: pullRequest.body
-            },
-            files: relevantFiles,
-            maxFiles
-        });
-        // Preview only. Writing the version file here would race every other open
-        // pull request: they all read the same baseline off main and would all
-        // predict the same next version. The write happens once, after the merge.
-        const result = previewVersionRecommendation({ baseVersion, recommendation });
-        setOutput('skipped', 'false');
-        setOutput('bump', recommendation.bump);
-        setOutput('current-version', result.currentVersion);
-        setOutput('next-version', result.nextVersion);
-        setOutput('summary', recommendation.summary);
-        setOutput('changelog-entry', result.changelogEntry);
-        await summary
-            .addHeading('Agentic semver result')
-            .addRaw(`Recommended bump: ${recommendation.bump}`)
-            .addBreak()
-            .addRaw(`Current version: ${result.currentVersion}`)
-            .addBreak()
-            .addRaw(`Next version (provisional): ${result.nextVersion}`)
-            .addBreak()
-            .addCodeBlock(result.changelogEntry.trim(), 'markdown')
-            .write();
-        const isFork = pullRequest.head.repo.full_name !== `${owner}/${repo}`;
-        // A fork pull request runs with a read-only token, so neither the comment nor
-        // the label lands. That is survivable: the release run finds no recommendation
-        // recorded and re-analyses the merged diff itself.
-        if (isFork) {
-            warning('Pull request comes from a fork, so the recommendation cannot be recorded on it. '
-                + 'The release workflow will re-analyse the diff after merge.');
-        }
-        else {
-            await postSummaryComment(octokit, {
-                owner,
-                repo,
-                issueNumber: pullRequest.number,
-                result,
-                recommendation,
-                verbose: commentSummary
-            });
-        }
-        if (applyLabel && !isFork) {
-            try {
-                await applyVersionLabel(octokit, {
-                    owner,
-                    repo,
-                    issueNumber: pullRequest.number,
-                    bump: recommendation.bump
-                });
-            }
-            catch (labelErr) {
-                warning(`Failed to apply version label: ${labelErr instanceof Error ? labelErr.message : String(labelErr)}`);
-            }
-        }
-    }
-    catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (error instanceof Error && error.stack) {
-            core_debug(error.stack);
-        }
-        setFailed(message);
-    }
-}
-if (process.argv[1] === (0,external_node_url_.fileURLToPath)(import.meta.url)) {
-    void run();
-}
 
 ;// CONCATENATED MODULE: ./src/apply-version.ts
 
@@ -51909,8 +51669,7 @@ if (process.argv[1] === (0,external_node_url_.fileURLToPath)(import.meta.url)) {
 
 
 
-
-const apply_version_SEMVER_LABELS = new Set(['patch', 'minor', 'major']);
+const SEMVER_LABELS = new Set(['patch', 'minor', 'major']);
 /**
  * The bump a reviewer chose, when they overrode the recommendation.
  *
@@ -51920,13 +51679,32 @@ const apply_version_SEMVER_LABELS = new Set(['patch', 'minor', 'major']);
  * disagree, the label is taken as deliberate and wins.
  */
 function resolveBump(recorded, labels) {
-    const labelled = labels.map((label) => label.name).filter((name) => apply_version_SEMVER_LABELS.has(name));
+    const labelled = labels.map((label) => label.name).filter((name) => SEMVER_LABELS.has(name));
     // More than one semver label is ambiguous, so nothing is inferred from it.
     if (labelled.length !== 1) {
         return { bump: recorded, overridden: false };
     }
     const bump = labelled[0];
     return { bump, overridden: bump !== recorded };
+}
+/** Subject this action gives its own bump commits. */
+function bumpCommitSubject(version, pullNumber) {
+    return `chore: bump version to ${version} (#${pullNumber})`;
+}
+/**
+ * The version this action already applied for `pullNumber`, or null.
+ *
+ * The push happens before the tag, the release, and the publish, so a failure in
+ * any of those leaves a pushed bump and a red job. Re-running that job has to
+ * finish the release rather than bump a second time — without this check a retry
+ * reads the version it just wrote as the new baseline and increments past it.
+ */
+function findAppliedBump(headSubject, pullNumber) {
+    const match = /^chore: bump version to (\S+) \(#(\d+)\)$/.exec(headSubject.trim());
+    if (!match || Number(match[2]) !== pullNumber) {
+        return null;
+    }
+    return match[1];
 }
 /**
  * Puts the workspace on the current tip of `branch` before anything is read.
@@ -52011,6 +51789,19 @@ async function runApplyVersion() {
         // this one was open, and that difference is the bug this design removes.
         const baseVersion = readVersionFromFile(resolvedVersionFile);
         info(`Baseline version on ${targetBaseBranch}: ${baseVersion}`);
+        // Already applied for this pull request — a previous run pushed the bump and
+        // then something after it failed. Report what is on the branch so the release
+        // steps can finish, and touch nothing.
+        const headSubject = (0,external_node_child_process_.execFileSync)('git', ['log', '-1', '--format=%s'], { encoding: 'utf8' });
+        const alreadyApplied = findAppliedBump(headSubject, issueNumber);
+        if (alreadyApplied) {
+            info(`Version ${alreadyApplied} was already applied for #${issueNumber}; not bumping again.`);
+            setOutput('skipped', 'false');
+            setOutput('current-version', alreadyApplied);
+            setOutput('next-version', alreadyApplied);
+            setOutput('commit-sha', (0,external_node_child_process_.execFileSync)('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim());
+            return;
+        }
         const comments = await octokit.paginate(octokit.rest.issues.listComments, {
             owner,
             repo,
@@ -52075,7 +51866,7 @@ async function runApplyVersion() {
             branch: targetBaseBranch,
             versionFilePath: external_node_path_default().relative(workdir, resolvedVersionFile),
             changelogPath,
-            message: `chore: bump version to ${result.nextVersion} (#${issueNumber})`
+            message: bumpCommitSubject(result.nextVersion, issueNumber)
         });
         setOutput('skipped', 'false');
         setOutput('bump', bump);
@@ -52098,12 +51889,9 @@ async function runApplyVersion() {
         setFailed(message);
     }
 }
-if (process.argv[1] === (0,external_node_url_.fileURLToPath)(import.meta.url)) {
-    void runApplyVersion();
-}
 
-var __webpack_exports__checkoutBranchTip = __webpack_exports__.oU;
-var __webpack_exports__commitAndPush = __webpack_exports__.tk;
-var __webpack_exports__resolveBump = __webpack_exports__.X2;
-var __webpack_exports__runApplyVersion = __webpack_exports__.YS;
-export { __webpack_exports__checkoutBranchTip as checkoutBranchTip, __webpack_exports__commitAndPush as commitAndPush, __webpack_exports__resolveBump as resolveBump, __webpack_exports__runApplyVersion as runApplyVersion };
+;// CONCATENATED MODULE: ./src/entry/apply-version.ts
+/** Bundle entry point for the post-merge action. See entry/action.ts. */
+
+void runApplyVersion();
+

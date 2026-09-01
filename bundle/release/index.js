@@ -29067,22 +29067,12 @@ function qstring(str) {
 /************************************************************************/
 var __webpack_exports__ = {};
 
-// EXPORTS
-__nccwpck_require__.d(__webpack_exports__, {
-  Y5: () => (/* reexport */ detectVersionFile),
-  Xo: () => (/* binding */ extractChangelogSection),
-  P5: () => (/* reexport */ readVersionFromFile),
-  T_: () => (/* binding */ runRelease)
-});
-
 ;// CONCATENATED MODULE: external "node:fs"
 const external_node_fs_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:fs");
 var external_node_fs_default = /*#__PURE__*/__nccwpck_require__.n(external_node_fs_namespaceObject);
 ;// CONCATENATED MODULE: external "node:path"
 const external_node_path_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:path");
 var external_node_path_default = /*#__PURE__*/__nccwpck_require__.n(external_node_path_namespaceObject);
-// EXTERNAL MODULE: external "node:url"
-var external_node_url_ = __nccwpck_require__(3136);
 ;// CONCATENATED MODULE: external "os"
 const external_os_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("os");
 ;// CONCATENATED MODULE: ./node_modules/@actions/core/lib/utils.js
@@ -36525,7 +36515,6 @@ function writeVersionToFile(filePath, version) {
 
 
 
-
 // Re-export so tests and external consumers can import from either module.
 
 // ──────────────────────────────────────────────────────────────────────
@@ -36628,12 +36617,9 @@ async function runRelease() {
         setFailed(message);
     }
 }
-if (process.argv[1] === (0,external_node_url_.fileURLToPath)(import.meta.url)) {
-    void runRelease();
-}
 
-var __webpack_exports__detectVersionFile = __webpack_exports__.Y5;
-var __webpack_exports__extractChangelogSection = __webpack_exports__.Xo;
-var __webpack_exports__readVersionFromFile = __webpack_exports__.P5;
-var __webpack_exports__runRelease = __webpack_exports__.T_;
-export { __webpack_exports__detectVersionFile as detectVersionFile, __webpack_exports__extractChangelogSection as extractChangelogSection, __webpack_exports__readVersionFromFile as readVersionFromFile, __webpack_exports__runRelease as runRelease };
+;// CONCATENATED MODULE: ./src/entry/release.ts
+/** Bundle entry point for the release action. See entry/action.ts. */
+
+void runRelease();
+
